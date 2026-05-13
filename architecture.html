@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CollaDoc — Architecture</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 min-h-screen p-8">
+
+<div class="max-w-4xl mx-auto">
+
+  <h1 class="text-2xl font-bold text-slate-800 mb-1">CollaDoc — Architecture</h1>
+  <p class="text-sm text-slate-500 mb-10">How files, people, and the agent connect</p>
+
+  <!-- LEGEND -->
+  <div class="flex gap-4 mb-8 flex-wrap">
+    <div class="flex items-center gap-1.5 text-xs text-slate-600"><div class="w-3 h-3 rounded bg-blue-500"></div> Author's machine</div>
+    <div class="flex items-center gap-1.5 text-xs text-slate-600"><div class="w-3 h-3 rounded bg-emerald-500"></div> Reviewer's machine</div>
+    <div class="flex items-center gap-1.5 text-xs text-slate-600"><div class="w-3 h-3 rounded bg-amber-400"></div> Google Drive (cloud sync)</div>
+    <div class="flex items-center gap-1.5 text-xs text-slate-600"><div class="w-3 h-3 rounded bg-violet-500"></div> Any AI agent (Claude Code, Cursor, GPT…)</div>
+  </div>
+
+  <div class="space-y-3">
+
+    <!-- STEP 1 -->
+    <div class="flex items-stretch gap-3">
+      <div class="flex flex-col items-center">
+        <div class="w-7 h-7 rounded-full bg-slate-800 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">1</div>
+        <div class="w-px flex-1 bg-slate-200 mt-1"></div>
+      </div>
+      <div class="flex-1 pb-3">
+        <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+          <p class="font-semibold text-slate-800 text-sm mb-3">Author writes or edits the spec</p>
+          <div class="flex gap-3 flex-wrap">
+            <div class="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2.5 text-center">
+              <div class="text-lg mb-0.5">📝</div>
+              <div class="font-mono text-xs font-bold text-blue-800">spec.md</div>
+              <div class="text-xs text-blue-500 mt-0.5">source of truth</div>
+            </div>
+            <div class="flex items-center text-slate-300 text-xl">→</div>
+            <div class="flex items-center bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-xs text-slate-600 max-w-xs">
+              Author writes MD directly, or asks an agent to draft it. MD is the content layer. Everything else is generated from it.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 2 -->
+    <div class="flex items-stretch gap-3">
+      <div class="flex flex-col items-center">
+        <div class="w-7 h-7 rounded-full bg-slate-800 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">2</div>
+        <div class="w-px flex-1 bg-slate-200 mt-1"></div>
+      </div>
+      <div class="flex-1 pb-3">
+        <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+          <p class="font-semibold text-slate-800 text-sm mb-3">Agent generates the HTML review layer</p>
+          <div class="flex gap-3 items-center flex-wrap">
+            <div class="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2.5 text-center">
+              <div class="text-lg mb-0.5">📝</div>
+              <div class="font-mono text-xs font-bold text-blue-800">spec.md</div>
+            </div>
+            <div class="text-slate-300 text-xl">→</div>
+            <div class="bg-violet-50 border border-violet-200 rounded-lg px-3 py-2 text-center text-xs text-violet-700">
+              <div class="text-base mb-0.5">🤖</div>
+              any agent<br/>
+              <span class="text-violet-400">"generate spec.html"</span>
+            </div>
+            <div class="text-slate-300 text-xl">→</div>
+            <div class="bg-orange-50 border border-orange-200 rounded-lg px-4 py-2.5 text-center">
+              <div class="text-lg mb-0.5">🌐</div>
+              <div class="font-mono text-xs font-bold text-orange-800">spec.html</div>
+              <div class="text-xs text-orange-500 mt-0.5">CollaDoc embedded</div>
+              <div class="text-xs text-orange-400">annotations: []</div>
+            </div>
+          </div>
+          <div class="mt-3 bg-slate-50 rounded-lg p-2.5 text-xs text-slate-500 border border-slate-100">
+            Both files live in the same Drive folder. The HTML contains a <code class="bg-white px-1 rounded border border-slate-200">&lt;script id="colladoc-data"&gt;[]&lt;/script&gt;</code> block — empty for now.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 3 -->
+    <div class="flex items-stretch gap-3">
+      <div class="flex flex-col items-center">
+        <div class="w-7 h-7 rounded-full bg-slate-800 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">3</div>
+        <div class="w-px flex-1 bg-slate-200 mt-1"></div>
+      </div>
+      <div class="flex-1 pb-3">
+        <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+          <p class="font-semibold text-slate-800 text-sm mb-3">Drive syncs both files to the reviewer</p>
+          <div class="flex gap-3 items-center flex-wrap">
+            <div class="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-center text-xs">
+              <div class="text-base">🖥️</div>
+              <div class="font-semibold text-blue-700">Author's machine</div>
+              <div class="text-blue-400">spec.md + spec.html</div>
+            </div>
+            <div class="flex flex-col items-center gap-0.5">
+              <svg width="60" height="20" viewBox="0 0 60 20">
+                <line x1="4" y1="10" x2="52" y2="10" stroke="#f59e0b" stroke-width="2" stroke-dasharray="5 3">
+                  <animate attributeName="stroke-dashoffset" values="0;-16" dur="1s" repeatCount="indefinite"/>
+                </line>
+                <polygon points="52,6 60,10 52,14" fill="#f59e0b"/>
+              </svg>
+              <span class="text-xs text-amber-500">Drive sync</span>
+            </div>
+            <div class="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-center text-xs">
+              <div class="text-base">☁️</div>
+              <div class="font-semibold text-amber-700">Google Drive</div>
+              <div class="text-amber-400">shared folder</div>
+            </div>
+            <div class="flex flex-col items-center gap-0.5">
+              <svg width="60" height="20" viewBox="0 0 60 20">
+                <line x1="4" y1="10" x2="52" y2="10" stroke="#f59e0b" stroke-width="2" stroke-dasharray="5 3">
+                  <animate attributeName="stroke-dashoffset" values="0;-16" dur="1s" repeatCount="indefinite"/>
+                </line>
+                <polygon points="52,6 60,10 52,14" fill="#f59e0b"/>
+              </svg>
+              <span class="text-xs text-amber-500">Drive sync</span>
+            </div>
+            <div class="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 text-center text-xs">
+              <div class="text-base">🖥️</div>
+              <div class="font-semibold text-emerald-700">Reviewer's machine</div>
+              <div class="text-emerald-400">spec.md + spec.html</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 4 -->
+    <div class="flex items-stretch gap-3">
+      <div class="flex flex-col items-center">
+        <div class="w-7 h-7 rounded-full bg-slate-800 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">4</div>
+        <div class="w-px flex-1 bg-slate-200 mt-1"></div>
+      </div>
+      <div class="flex-1 pb-3">
+        <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+          <p class="font-semibold text-slate-800 text-sm mb-3">Reviewer annotates in Chrome</p>
+          <div class="flex gap-4 flex-wrap">
+            <div class="flex-1 min-w-52">
+              <div class="flex gap-2 items-start mb-2">
+                <div class="bg-emerald-100 text-emerald-700 rounded px-2 py-0.5 text-xs font-medium flex-shrink-0">Option A</div>
+                <div class="text-xs text-slate-600">Open <code class="bg-slate-100 px-1 rounded">spec.html</code> directly from Finder/Explorer. Works without any setup. Comments auto-save to <code class="bg-slate-100 px-1 rounded">localStorage</code>; the in-file block updates in the browser.</div>
+              </div>
+              <div class="flex gap-2 items-start">
+                <div class="bg-blue-100 text-blue-700 rounded px-2 py-0.5 text-xs font-medium flex-shrink-0">Option B</div>
+                <div class="text-xs text-slate-600">CollaDoc server running as a background service → open <code class="bg-slate-100 px-1 rounded">localhost:3000/spec.html</code> → comments auto-save directly to the file on disk. No extra steps.</div>
+              </div>
+            </div>
+            <div class="bg-orange-50 border border-orange-200 rounded-lg px-4 py-3 text-center text-xs flex-shrink-0">
+              <div class="text-base mb-1">🌐</div>
+              <div class="font-mono font-bold text-orange-800">spec.html</div>
+              <div class="text-orange-500 mt-1">annotations: [</div>
+              <div class="text-orange-400 pl-2">{ "Which method?" },</div>
+              <div class="text-orange-400 pl-2">{ "USD only?" }</div>
+              <div class="text-orange-500">]</div>
+            </div>
+          </div>
+          <div class="mt-3 bg-emerald-50 border border-emerald-100 rounded-lg p-2.5 text-xs text-emerald-700">
+            The CollaDoc server binds to <strong>127.0.0.1 only</strong> — never exposed outside the local machine.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 5 -->
+    <div class="flex items-stretch gap-3">
+      <div class="flex flex-col items-center">
+        <div class="w-7 h-7 rounded-full bg-slate-800 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">5</div>
+        <div class="w-px flex-1 bg-slate-200 mt-1"></div>
+      </div>
+      <div class="flex-1 pb-3">
+        <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+          <p class="font-semibold text-slate-800 text-sm mb-1">Drive syncs annotated HTML back to author</p>
+          <p class="text-xs text-slate-500 mb-3">spec.html now contains the reviewer's comments. spec.md is unchanged.</p>
+          <div class="flex gap-2 items-center text-xs text-slate-500 flex-wrap">
+            <span class="bg-emerald-100 text-emerald-700 px-2 py-1 rounded font-mono">Reviewer: spec.html (annotated)</span>
+            <span class="text-amber-400">→ Drive →</span>
+            <span class="bg-blue-100 text-blue-700 px-2 py-1 rounded font-mono">Author: spec.html (annotated)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 6 -->
+    <div class="flex items-stretch gap-3">
+      <div class="flex flex-col items-center">
+        <div class="w-7 h-7 rounded-full bg-slate-800 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">6</div>
+        <div class="w-px flex-1 bg-slate-200 mt-1"></div>
+      </div>
+      <div class="flex-1 pb-3">
+        <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+          <p class="font-semibold text-slate-800 text-sm mb-3">Agent addresses feedback</p>
+          <div class="flex gap-3 items-start flex-wrap">
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700 flex-shrink-0">
+              <div class="font-semibold mb-1">Author says to agent:</div>
+              <div class="italic text-blue-500">"address open feedback<br/>in this folder"</div>
+            </div>
+            <div class="text-slate-300 text-xl mt-3">→</div>
+            <div class="flex-1 min-w-48 space-y-1.5 text-xs">
+              <div class="flex items-center gap-2 bg-violet-50 border border-violet-100 rounded-lg px-3 py-2">
+                <span class="text-violet-400">1.</span>
+                <span class="text-slate-600">Reads <code class="bg-white px-1 rounded border border-slate-200">spec.html</code> — parses open annotation threads</span>
+              </div>
+              <div class="flex items-center gap-2 bg-violet-50 border border-violet-100 rounded-lg px-3 py-2">
+                <span class="text-violet-400">2.</span>
+                <span class="text-slate-600">Reads <code class="bg-white px-1 rounded border border-slate-200">spec.md</code> — the content to edit</span>
+              </div>
+              <div class="flex items-center gap-2 bg-violet-50 border border-violet-100 rounded-lg px-3 py-2">
+                <span class="text-violet-400">3.</span>
+                <span class="text-slate-600">Corrections → edits <code class="bg-white px-1 rounded border border-slate-200">spec.md</code> silently. Decisions/opinions → embeds as <code class="bg-white px-1 rounded border border-slate-200">&gt; Note (author):</code></span>
+              </div>
+              <div class="flex items-center gap-2 bg-violet-50 border border-violet-100 rounded-lg px-3 py-2">
+                <span class="text-violet-400">4.</span>
+                <span class="text-slate-600">Regenerates <code class="bg-white px-1 rounded border border-slate-200">spec.html</code>, marks addressed threads <code class="bg-white px-1 rounded border border-slate-200">resolved:true</code></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LOOP -->
+    <div class="flex items-stretch gap-3">
+      <div class="flex flex-col items-center">
+        <div class="w-7 h-7 rounded-full bg-emerald-600 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">↩</div>
+      </div>
+      <div class="flex-1">
+        <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+          <p class="font-semibold text-emerald-800 text-sm">Loop repeats from step 3</p>
+          <p class="text-xs text-emerald-600 mt-1">Drive syncs updated spec.html to the reviewer. Resolved threads show in green. New round of comments can begin. spec.md is always the versioned artifact. HTML is always regenerated — never manually edited.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- FILE ANATOMY -->
+  <div class="mt-12">
+    <h2 class="text-base font-bold text-slate-800 mb-4">What lives in the folder</h2>
+    <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm font-mono text-sm">
+      <div class="text-slate-400 mb-2">/project/specs/feature-xyz/</div>
+      <div class="space-y-1 pl-4">
+        <div class="flex gap-3">
+          <span class="text-blue-600">spec.md</span>
+          <span class="text-slate-400 text-xs mt-0.5">← source of truth. edited by agent. versioned in git.</span>
+        </div>
+        <div class="flex gap-3">
+          <span class="text-orange-600">spec.html</span>
+          <span class="text-slate-400 text-xs mt-0.5">← generated from spec.md. contains annotations. regenerated each cycle.</span>
+        </div>
+        <div class="flex gap-3 mt-3">
+          <span class="text-blue-600">brief.md</span>
+          <span class="text-slate-400 text-xs mt-0.5"></span>
+        </div>
+        <div class="flex gap-3">
+          <span class="text-orange-600">brief.html</span>
+          <span class="text-slate-400 text-xs mt-0.5">← same pattern for every MD in the folder that needs review</span>
+        </div>
+      </div>
+      <div class="mt-4 pt-4 border-t border-slate-100 text-xs text-slate-400">
+        Annotations are stored inside each HTML file — no sidecar files. Any agent reads any HTML file directly with a standard Read tool call.
+      </div>
+    </div>
+  </div>
+
+  <!-- ANNOTATION BLOCK -->
+  <div class="mt-8">
+    <h2 class="text-base font-bold text-slate-800 mb-4">What the annotation block looks like (inside spec.html)</h2>
+    <div class="bg-slate-900 rounded-xl p-5 text-xs font-mono leading-relaxed overflow-x-auto">
+      <div class="text-slate-500">&lt;!-- CollaDoc annotation store — readable by any AI --&gt;</div>
+      <div class="text-slate-300">&lt;<span class="text-blue-400">script</span> <span class="text-amber-400">type</span>=<span class="text-emerald-400">"application/json"</span> <span class="text-amber-400">id</span>=<span class="text-emerald-400">"colladoc-data"</span>&gt;</div>
+      <div class="text-slate-300 pl-4">[</div>
+      <div class="pl-8 text-slate-300">
+        <div>{</div>
+        <div class="pl-4"><span class="text-amber-300">"id"</span>: <span class="text-emerald-300">"t_1715510400"</span>,</div>
+        <div class="pl-4"><span class="text-amber-300">"anchor"</span>: <span class="text-emerald-300">"DLOM adjustment"</span>,</div>
+        <div class="pl-4"><span class="text-amber-300">"prefix"</span>: <span class="text-emerald-300">"runs the "</span>, <span class="text-slate-500">// context for re-anchoring if text moves</span></div>
+        <div class="pl-4"><span class="text-amber-300">"suffix"</span>: <span class="text-emerald-300">", and outputs"</span>,</div>
+        <div class="pl-4"><span class="text-amber-300">"comment"</span>: <span class="text-emerald-300">"Which DLOM method — Chaffe or restricted stock?"</span>,</div>
+        <div class="pl-4"><span class="text-amber-300">"author"</span>: <span class="text-emerald-300">"reviewer"</span>,</div>
+        <div class="pl-4"><span class="text-amber-300">"ts"</span>: <span class="text-emerald-300">"2026-05-13T09:00:00Z"</span>,</div>
+        <div class="pl-4"><span class="text-amber-300">"resolved"</span>: <span class="text-blue-300">false</span>,</div>
+        <div class="pl-4"><span class="text-amber-300">"replies"</span>: [</div>
+        <div class="pl-8">{ <span class="text-amber-300">"author"</span>: <span class="text-emerald-300">"author"</span>, <span class="text-amber-300">"text"</span>: <span class="text-emerald-300">"Chaffe. Same as Carta."</span> }</div>
+        <div class="pl-4">]</div>
+        <div>}</div>
+      </div>
+      <div class="pl-4 text-slate-300">]</div>
+      <div class="text-slate-300">&lt;/<span class="text-blue-400">script</span>&gt;</div>
+    </div>
+    <p class="text-xs text-slate-500 mt-2">Any AI reads this with a standard Read tool call. No MCP, no API, no export step.</p>
+  </div>
+
+</div>
+</body>
+</html>

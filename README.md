@@ -4,6 +4,8 @@ An annotation layer for HTML documents that humans and AI agents can both read a
 
 You generate a spec or plan as HTML. You or a teammate open it in Chrome and leave inline comments by selecting text. The comments are stored as JSON inside the HTML file itself. The agent reads the file directly — no export, no clipboard, no extra steps. You address the feedback in the markdown source, regenerate the HTML, and the cycle repeats.
 
+**[Open architecture diagram](architecture.html)** — download and open in any browser for an interactive walkthrough with animated sync arrows.
+
 ---
 
 ## The workflow
