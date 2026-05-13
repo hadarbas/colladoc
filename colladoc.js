@@ -9,7 +9,8 @@ window.__colladocLoaded = true;
 
 (function () {
   const AUTHOR_CONFIG = '';  // set to 'hadar' or 'yuval' when embedding, or leave '' to prompt
-  const SERVER        = 'http://127.0.0.1:3000';
+  // Use same origin when served over http (avoids localhost vs 127.0.0.1 CORS mismatch)
+  const SERVER = location.protocol === 'http:' ? '' : 'http://127.0.0.1:3000';
   const SIDEBAR_W     = 272;
   const TOPBAR_H      = 44;
 
