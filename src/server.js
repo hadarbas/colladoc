@@ -92,10 +92,70 @@ export function startServer({ port = 3000, serveDir } = {}) {
       return;
     }
 
+    // ── Index page — lists all CollaDoc HTML files under serveDir ────
+    if (req.method === 'GET' && url.pathname === '/') {
+      const htmlFiles = [];
+      function walk(dir) {
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+          const full = join(dir, entry.name);
+          if (entry.isDirectory()) { walk(full); }
+          else if (entry.isFile() && extname(entry.name) === '.html') {
+            // Only include files that have a colladoc-data block
+            try {
+              const content = readFileSync(full, 'utf8');
+              if (content.includes('id="colladoc-data"')) {
+                const rel  = full.slice(resolve(serveDir).length); // e.g. /workspaces/spec.html
+                const open = (content.match(/"resolved"\s*:\s*false/g) || []).length;
+                htmlFiles.push({ path: rel, name: entry.name, open });
+              }
+            } catch {}
+          }
+        }
+      }
+      walk(serveDir);
+      htmlFiles.sort((a, b) => a.path.localeCompare(b.path));
+
+      const rows = htmlFiles.map(f => `
+        <tr>
+          <td style="padding:10px 12px">
+            <a href="${f.path}" style="color:#2563eb;text-decoration:none;font-weight:500;font-size:14px">${f.name}</a>
+            <div style="font-size:11px;color:#94a3b8;margin-top:2px">${f.path}</div>
+          </td>
+          <td style="padding:10px 12px;text-align:center">
+            ${f.open > 0
+              ? `<span style="background:#fef3c7;color:#92400e;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:600">${f.open} open</span>`
+              : `<span style="color:#94a3b8;font-size:11px">no open threads</span>`}
+          </td>
+        </tr>`).join('');
+
+      const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+        <title>CollaDoc</title>
+        <style>
+          body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8fafc;margin:0;padding:40px 32px}
+          h1{font-size:1.25rem;font-weight:700;color:#1e293b;margin:0 0 4px}
+          p{font-size:13px;color:#94a3b8;margin:0 0 24px}
+          table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+          th{padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #e2e8f0;background:#f8fafc}
+          tr:not(:last-child) td{border-bottom:1px solid #f1f5f9}
+          tr:hover td{background:#f8fafc}
+          .empty{text-align:center;padding:48px;color:#94a3b8;font-size:13px}
+        </style>
+      </head><body>
+        <h1>CollaDoc</h1>
+        <p>Serving: ${serveDir}</p>
+        <table>
+          <thead><tr><th>File</th><th style="text-align:center;width:140px">Open threads</th></tr></thead>
+          <tbody>${rows || `<tr><td colspan="2" class="empty">No CollaDoc HTML files found in this folder yet.</td></tr>`}</tbody>
+        </table>
+      </body></html>`;
+
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      return res.end(html);
+    }
+
     // ── Static file serving ───────────────────────────────────────
     if (req.method === 'GET') {
-      const safePath = url.pathname === '/' ? '/index.html' : url.pathname;
-      const filePath = join(serveDir, safePath);
+      const filePath = join(serveDir, url.pathname);
       // Prevent path traversal — resolve() collapses ../ sequences
       if (!withinServeDir(serveDir, filePath)) {
         return json(res, 403, { error: 'Forbidden' });

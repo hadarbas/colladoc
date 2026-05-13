@@ -90,6 +90,22 @@ window.__colladocLoaded = true;
       ind.textContent = serverOk ? 'auto-save on' : 'local only';
       ind.style.color = serverOk ? '#10b981' : '#94a3b8';
     }
+    // Show manual save button only when server is not available
+    const saveBtn = document.getElementById('cd-save-btn');
+    if (saveBtn) saveBtn.style.display = serverOk ? 'none' : '';
+  }
+
+  function saveFile() {
+    // Build updated HTML with current annotations baked in, trigger browser Save As
+    const el = document.getElementById('colladoc-data');
+    if (el) el.textContent = '\n' + JSON.stringify(annotations, null, 2) + '\n';
+    const blob = new Blob([document.documentElement.outerHTML], { type: 'text/html' });
+    const a    = document.createElement('a');
+    a.href     = URL.createObjectURL(blob);
+    // Suggest the same filename so user just navigates to the Drive folder and overwrites
+    a.download = location.pathname.split('/').pop() || 'document.html';
+    a.click();
+    URL.revokeObjectURL(a.href);
   }
 
   // ── Anchoring ─────────────────────────────────────────────────────────────────
@@ -349,10 +365,12 @@ window.__colladocLoaded = true;
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
         <span id="cd-open-count" style="font-size:12px;color:#94a3b8"></span>
+        <button id="cd-save-btn" style="display:none;font-size:12px;padding:5px 10px;border:1px solid #fbbf24;border-radius:6px;background:#fffbeb;cursor:pointer;color:#92400e;white-space:nowrap" title="Server not running — download updated file and save back to Drive folder">Save file</button>
         <button id="cd-sb-btn" style="font-size:12px;padding:5px 10px;border:1px solid #e2e8f0;border-radius:6px;background:#fff;cursor:pointer;color:#475569;white-space:nowrap">Hide sidebar</button>
       </div>`;
     document.body.appendChild(bar);
     document.getElementById('cd-sb-btn').addEventListener('click', toggleSidebar);
+    document.getElementById('cd-save-btn').addEventListener('click', saveFile);
   }
 
   function injectSidebar() {
