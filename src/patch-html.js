@@ -1,7 +1,15 @@
-const BLOCK_RE = /(<script[^>]+id="colladoc-data"[^>]*>)([\s\S]*?)(<\/script>)/;
+const BLOCK_RE = /(<script[^>]*type="application\/json"[^>]*id="colladoc-data"[^>]*>|<script[^>]*id="colladoc-data"[^>]*type="application\/json"[^>]*>)([\s\S]*?)(<\/script>)/g;
+
+function findLastMatch(html) {
+  let last = null;
+  let m;
+  const re = new RegExp(BLOCK_RE.source, 'g');
+  while ((m = re.exec(html)) !== null) last = m;
+  return last;
+}
 
 export function extractAnnotations(html) {
-  const match = html.match(BLOCK_RE);
+  const match = findLastMatch(html);
   if (!match) return [];
   try {
     return JSON.parse(match[2].trim());
@@ -11,12 +19,8 @@ export function extractAnnotations(html) {
 }
 
 export function patchAnnotationBlock(html, mergedAnnotations) {
-  if (!BLOCK_RE.test(html)) {
-    throw new Error('colladoc-data block not found in HTML');
-  }
-  return html.replace(
-    BLOCK_RE,
-    (_, open, _content, close) =>
-      `${open}\n${JSON.stringify(mergedAnnotations, null, 2)}\n${close}`
-  );
+  const match = findLastMatch(html);
+  if (!match) throw new Error('colladoc-data block not found in HTML');
+  const replacement = `${match[1]}\n${JSON.stringify(mergedAnnotations, null, 2)}\n${match[3]}`;
+  return html.slice(0, match.index) + replacement + html.slice(match.index + match[0].length);
 }
