@@ -128,8 +128,11 @@ export function startServer({ port = 3000, serveDir } = {}) {
           </td>
         </tr>`).join('');
 
+      const FAVICON = `data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%232563eb'/><path d='M6 8a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H10l-4 4V8z' fill='white'/><circle cx='11' cy='14' r='1.5' fill='%232563eb'/><circle cx='16' cy='14' r='1.5' fill='%232563eb'/><circle cx='21' cy='14' r='1.5' fill='%232563eb'/></svg>`;
+
       const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
         <title>CollaDoc</title>
+        <link rel="icon" href="${FAVICON}">
         <style>
           body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8fafc;margin:0;padding:40px 32px}
           h1{font-size:1.25rem;font-weight:700;color:#1e293b;margin:0 0 4px}

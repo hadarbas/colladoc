@@ -440,6 +440,13 @@ window.__colladocLoaded = true;
   }
 
   function injectStyles() {
+    // Favicon — speech bubble with three dots (annotation metaphor)
+    if (!document.querySelector('link[rel="icon"]')) {
+      const ico  = document.createElement('link');
+      ico.rel    = 'icon';
+      ico.href   = `data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%232563eb'/><path d='M6 8a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H10l-4 4V8z' fill='white'/><circle cx='11' cy='14' r='1.5' fill='%232563eb'/><circle cx='16' cy='14' r='1.5' fill='%232563eb'/><circle cx='21' cy='14' r='1.5' fill='%232563eb'/></svg>`;
+      document.head.appendChild(ico);
+    }
     const s = document.createElement('style');
     s.textContent = `
       mark.cd-hl { background:#fef08a; border-bottom:2px solid #ca8a04; cursor:pointer; border-radius:2px; padding:0 1px; }
