@@ -66,18 +66,22 @@ export function startServer({ port = 3000, serveDir } = {}) {
         if (!body.file || !Array.isArray(body.annotations)) {
           return json(res, 400, { error: 'Body must have { file, annotations }' });
         }
+        // Resolve relative paths (URL pathnames) against serveDir
+        const filePath = body.file.startsWith('/') && !body.file.startsWith(resolve(serveDir))
+          ? join(serveDir, body.file)
+          : body.file;
         // Confine writes to serveDir — prevents path traversal via arbitrary file paths
-        if (!withinServeDir(serveDir, body.file)) {
+        if (!withinServeDir(serveDir, filePath)) {
           return json(res, 403, { error: 'File outside serve directory' });
         }
-        if (!existsSync(body.file)) {
+        if (!existsSync(filePath)) {
           return json(res, 404, { error: 'File not found' });
         }
-        const html = readFileSync(body.file, 'utf8');
+        const html = readFileSync(filePath, 'utf8');
         const onDisk = extractAnnotations(html);
         const merged = mergeAnnotations(onDisk, body.annotations);
         const patched = patchAnnotationBlock(html, merged);
-        writeFileSync(body.file, patched, 'utf8');
+        writeFileSync(filePath, patched, 'utf8');
         json(res, 200, { merged });
       }).catch(err => json(res, 500, { error: err.message }));
       return;

@@ -46,7 +46,7 @@ describe('POST /colladoc/patch', () => {
     const res = await fetch(`${BASE}/colladoc/patch`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ file: '/etc/passwd', annotations: [] })
+      body: JSON.stringify({ file: '/../../../etc/passwd', annotations: [] })
     });
     assert.equal(res.status, 403);
   });
