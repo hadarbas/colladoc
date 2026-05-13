@@ -94,6 +94,8 @@ window.__colladocLoaded = true;
     // Show manual save button only when server is not available
     const saveBtn = document.getElementById('cd-save-btn');
     if (saveBtn) saveBtn.style.display = serverOk ? 'none' : '';
+    // Flush any queued localStorage annotations now that server is reachable
+    if (serverOk && annotations.length > 0) persist();
   }
 
   async function saveFile() {
