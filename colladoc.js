@@ -1,0 +1,425 @@
+/* CollaDoc v1 — embedded annotation layer
+ * Drop this script into any HTML file. Injects a fixed topbar + sidebar overlay.
+ * Does NOT wrap or move body content — avoids double-init from script tag relocation.
+ * Agent reads: <script id="colladoc-data"> for open threads (resolved:false).
+ * Server (optional, LaunchAgent): POST /colladoc/patch for auto-save + conflict merge.
+ */
+if (window.__colladocLoaded) { /* prevent double-init */ throw 0; }
+window.__colladocLoaded = true;
+
+(function () {
+  const AUTHOR_CONFIG = '';  // set to 'hadar' or 'yuval' when embedding, or leave '' to prompt
+  const SERVER        = 'http://127.0.0.1:3000';
+  const SIDEBAR_W     = 272;
+  const TOPBAR_H      = 44;
+
+  // ── State ─────────────────────────────────────────────────────────────────────
+  let annotations    = [];
+  let pending        = null;   // { anchor, prefix, suffix }
+  let author         = AUTHOR_CONFIG || localStorage.getItem('colladoc_author') || '';
+  let serverOk       = false;
+  let sidebarVisible = true;
+
+  // ── Boot ──────────────────────────────────────────────────────────────────────
+  function init() {
+    if (!author) {
+      const n = prompt('CollaDoc: your name (tags your comments):');
+      author = (n || '').trim() || 'anon';
+      localStorage.setItem('colladoc_author', author);
+    }
+    loadAnnotations();
+    injectStyles();
+    injectTopbar();
+    injectSidebar();
+    injectPopup();
+    injectTip();
+    applyHighlights();
+    renderSidebar();
+    checkServer();
+    document.addEventListener('mouseup', onMouseUp);
+    document.addEventListener('mousedown', onOutsideClick);
+  }
+
+  // ── Load / persist annotations ────────────────────────────────────────────────
+  function loadAnnotations() {
+    // Prefer localStorage (survives file:// reloads), fall back to in-file block
+    const lsKey  = 'colladoc_' + location.href;
+    const stored = localStorage.getItem(lsKey);
+    if (stored) {
+      try { annotations = JSON.parse(stored); return; } catch {}
+    }
+    const el = document.getElementById('colladoc-data');
+    if (el) {
+      try { annotations = JSON.parse(el.textContent.trim()) || []; } catch {}
+    }
+  }
+
+  async function persist() {
+    const lsKey = 'colladoc_' + location.href;
+    localStorage.setItem(lsKey, JSON.stringify(annotations));
+
+    // Update in-file block (readable by agent on next Read)
+    const el = document.getElementById('colladoc-data');
+    if (el) el.textContent = '\n' + JSON.stringify(annotations, null, 2) + '\n';
+
+    if (serverOk) {
+      try {
+        const filePath = decodeURIComponent(location.pathname);
+        const res = await fetch(`${SERVER}/colladoc/patch`, {
+          method : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body   : JSON.stringify({ file: filePath, annotations }),
+        });
+        if (res.ok) {
+          const { merged } = await res.json();
+          annotations = merged;
+          if (el) el.textContent = '\n' + JSON.stringify(merged, null, 2) + '\n';
+          localStorage.setItem(lsKey, JSON.stringify(merged));
+        }
+      } catch {}
+    }
+  }
+
+  async function checkServer() {
+    try {
+      const r = await fetch(`${SERVER}/colladoc/files`, { signal: AbortSignal.timeout(800) });
+      serverOk = r.ok;
+    } catch { serverOk = false; }
+    const ind = document.getElementById('cd-save-ind');
+    if (ind) {
+      ind.textContent = serverOk ? 'auto-save on' : 'local only';
+      ind.style.color = serverOk ? '#10b981' : '#94a3b8';
+    }
+  }
+
+  // ── Anchoring ─────────────────────────────────────────────────────────────────
+  function getContext(range) {
+    const anchor = range.toString();
+    const full   = range.commonAncestorContainer.textContent || '';
+    const start  = full.indexOf(anchor);
+    return {
+      anchor,
+      prefix: full.slice(Math.max(0, start - 20), start),
+      suffix: full.slice(start + anchor.length, start + anchor.length + 20),
+    };
+  }
+
+  function findTextNode(anchor) {
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    let n;
+    while ((n = walker.nextNode())) {
+      // Skip script/style nodes
+      const tag = n.parentElement?.tagName;
+      if (tag === 'SCRIPT' || tag === 'STYLE') continue;
+      const i = n.textContent.indexOf(anchor);
+      if (i !== -1) return { node: n, index: i };
+    }
+    return null;
+  }
+
+  // ── Highlights ────────────────────────────────────────────────────────────────
+  function applyHighlights() {
+    document.querySelectorAll('mark.cd-hl').forEach(m => {
+      m.replaceWith(document.createTextNode(m.textContent));
+    });
+    document.body.normalize();
+    [...annotations].reverse().forEach(markText);
+  }
+
+  function markText(a) {
+    const found = findTextNode(a.anchor);
+    if (!found) return;
+    const { node, index } = found;
+    const mark      = document.createElement('mark');
+    mark.className  = 'cd-hl' + (a.resolved ? ' cd-resolved' : '');
+    mark.dataset.id = a.id;
+    mark.textContent = a.anchor;
+    mark.title = `[${a.author}] ${a.comment}`;
+    mark.addEventListener('click', () => focusPair(a.id));
+    const before = document.createTextNode(node.textContent.slice(0, index));
+    const after  = document.createTextNode(node.textContent.slice(index + a.anchor.length));
+    node.replaceWith(before, mark, after);
+  }
+
+  // ── Sidebar render ────────────────────────────────────────────────────────────
+  const COLORS   = ['#3b82f6','#10b981','#f59e0b','#8b5cf6','#ef4444'];
+  const aColor   = n => COLORS[Math.abs([...n].reduce((h,c)=>h*31+c.charCodeAt(0),0)) % COLORS.length];
+
+  function renderSidebar() {
+    const el   = document.getElementById('cd-threads');
+    if (!el) return;
+    const open = annotations.filter(a => !a.resolved);
+    const done = annotations.filter(a =>  a.resolved);
+    el.innerHTML = '';
+    if (!annotations.length) {
+      el.innerHTML = '<p style="text-align:center;color:#94a3b8;font-size:12px;padding:32px 8px">Select any text to comment</p>';
+    } else {
+      if (open.length) { el.appendChild(label(`Open (${open.length})`)); open.forEach(a => el.appendChild(card(a))); }
+      if (done.length) { el.appendChild(label(`Resolved (${done.length})`)); done.forEach(a => el.appendChild(card(a))); }
+    }
+    const cnt = document.getElementById('cd-open-count');
+    if (cnt) cnt.textContent = open.length === 1 ? '1 open' : `${open.length} open`;
+  }
+
+  function label(txt) {
+    const p = document.createElement('p');
+    p.style.cssText = 'font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.07em;padding:8px 4px 4px;margin:0';
+    p.textContent = txt;
+    return p;
+  }
+
+  function card(a) {
+    const c   = document.createElement('div');
+    c.id      = 'cd-card-' + a.id;
+    c.style.cssText = `background:#fff;border:1px solid ${a.resolved ? '#f1f5f9' : '#e2e8f0'};border-radius:10px;padding:10px 12px;cursor:pointer;margin-bottom:6px`;
+    c.addEventListener('click', () => scrollToMark(a.id));
+    const col  = aColor(a.author);
+    const date = new Date(a.ts).toLocaleDateString('en-US', { month:'short', day:'numeric' });
+    const prev = a.anchor.length > 30 ? a.anchor.slice(0,30) + '…' : a.anchor;
+    c.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <div style="display:flex;align-items:center;gap:5px">
+          <div style="width:18px;height:18px;border-radius:50%;background:${col};color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${a.author[0].toUpperCase()}</div>
+          <span style="font-size:12px;font-weight:600;color:#1e293b">${a.author}</span>
+          <span style="font-size:11px;color:#94a3b8">${date}</span>
+        </div>
+        ${a.resolved
+          ? `<button data-action="unresolve" data-id="${a.id}" style="font-size:11px;color:#10b981;background:none;border:none;cursor:pointer;font-weight:500;padding:0">resolved ↩</button>`
+          : `<button data-action="resolve"   data-id="${a.id}" style="font-size:15px;color:#cbd5e1;background:none;border:none;cursor:pointer;line-height:1;padding:0" title="Mark resolved">✓</button>`}
+      </div>
+      <p style="font-size:11px;color:#94a3b8;font-style:italic;margin:0 0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">"${prev}"</p>
+      <p style="font-size:12px;color:#1e293b;line-height:1.5;margin:0">${a.comment}</p>
+      ${a.replies.map(r => `
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid #f1f5f9;display:flex;gap:6px">
+          <div style="width:14px;height:14px;border-radius:50%;background:${aColor(r.author)};color:#fff;font-size:8px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px">${r.author[0].toUpperCase()}</div>
+          <p style="font-size:11px;color:#475569;margin:0;line-height:1.5">${r.text}</p>
+        </div>`).join('')}
+      ${!a.resolved ? `
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid #f1f5f9">
+          <input data-reply-id="${a.id}" placeholder="Reply and press Enter…"
+            style="width:100%;font-size:11px;color:#475569;background:transparent;border:none;outline:none;box-sizing:border-box"/>
+        </div>` : ''}`;
+    return c;
+  }
+
+  // ── Sidebar event delegation ───────────────────────────────────────────────────
+  document.addEventListener('click', e => {
+    const btn = e.target.closest('[data-action]');
+    if (btn) {
+      e.stopPropagation();
+      const id = btn.dataset.id;
+      if (btn.dataset.action === 'resolve')   { resolve(id); }
+      if (btn.dataset.action === 'unresolve') { unresolve(id); }
+    }
+  });
+  document.addEventListener('keydown', e => {
+    const inp = e.target.closest('[data-reply-id]');
+    if (inp && e.key === 'Enter' && inp.value.trim()) {
+      e.stopPropagation();
+      e.preventDefault();
+      addReply(inp.dataset.replyId, inp.value.trim());
+      inp.value = '';
+    }
+  });
+
+  function resolve(id) {
+    const a = annotations.find(x => x.id === id);
+    if (a) { a.resolved = true; persist().then(() => { applyHighlights(); renderSidebar(); }); }
+  }
+  function unresolve(id) {
+    const a = annotations.find(x => x.id === id);
+    if (a) { a.resolved = false; persist().then(() => { applyHighlights(); renderSidebar(); }); }
+  }
+  function addReply(id, text) {
+    const a = annotations.find(x => x.id === id);
+    if (a) {
+      a.replies.push({ author, text, ts: new Date().toISOString() });
+      persist().then(() => { applyHighlights(); renderSidebar(); });
+    }
+  }
+
+  function focusPair(id) {
+    document.querySelectorAll('mark.cd-hl').forEach(m => m.style.outline = '');
+    const mk = document.querySelector(`mark.cd-hl[data-id="${id}"]`);
+    if (mk) mk.style.outline = '2px solid #3b82f6';
+    document.querySelectorAll('[id^="cd-card-"]').forEach(c => c.style.background = '#fff');
+    const cd = document.getElementById('cd-card-' + id);
+    if (cd) { cd.style.background = '#eff6ff'; cd.scrollIntoView({ block:'nearest', behavior:'smooth' }); }
+  }
+  function scrollToMark(id) {
+    const m = document.querySelector(`mark.cd-hl[data-id="${id}"]`);
+    if (m) m.scrollIntoView({ block:'center', behavior:'smooth' });
+    focusPair(id);
+  }
+
+  // ── Selection tooltip ─────────────────────────────────────────────────────────
+  function onMouseUp() {
+    const sel  = window.getSelection();
+    if (!sel || sel.isCollapsed) { hideTip(); return; }
+    const text = sel.toString().trim();
+    if (text.length < 3) { hideTip(); return; }
+    const range = sel.getRangeAt(0);
+    // Ignore selections inside CollaDoc UI
+    if (range.commonAncestorContainer.nodeType === 1 &&
+        range.commonAncestorContainer.closest?.('#cd-topbar,#cd-sidebar,#cd-popup,#cd-tip')) return;
+    pending = getContext(range);
+    const r   = range.getBoundingClientRect();
+    const tip = document.getElementById('cd-tip');
+    tip.style.display = 'block';
+    tip.style.top     = (r.top  - 36) + 'px';
+    tip.style.left    = (r.left + r.width / 2 - 44) + 'px';
+  }
+
+  function hideTip() {
+    const t = document.getElementById('cd-tip');
+    if (t) t.style.display = 'none';
+  }
+
+  function onOutsideClick(e) {
+    const popup = document.getElementById('cd-popup');
+    if (popup && popup.style.display !== 'none' &&
+        !popup.contains(e.target) && e.target.id !== 'cd-tip') {
+      cancelComment();
+    }
+  }
+
+  // ── Comment popup actions ─────────────────────────────────────────────────────
+  function startComment() {
+    if (!pending) return;
+    hideTip();
+    const prev = pending.anchor.length > 35 ? pending.anchor.slice(0,35) + '…' : pending.anchor;
+    document.getElementById('cd-popup-anchor').textContent = `"${prev}"`;
+    document.getElementById('cd-popup-input').value = '';
+    const popup = document.getElementById('cd-popup');
+    const sel   = window.getSelection();
+    if (sel && sel.rangeCount) {
+      const r    = sel.getRangeAt(0).getBoundingClientRect();
+      popup.style.top  = Math.min(r.bottom + 8, window.innerHeight - 185) + 'px';
+      popup.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 276)) + 'px';
+    }
+    popup.style.display = 'block';
+    document.getElementById('cd-popup-input').focus();
+  }
+
+  function cancelComment() {
+    const popup = document.getElementById('cd-popup');
+    if (popup) popup.style.display = 'none';
+    pending = null;
+    window.getSelection()?.removeAllRanges();
+  }
+
+  function submitComment() {
+    const text = document.getElementById('cd-popup-input').value.trim();
+    if (!text || !pending) return;
+    annotations.unshift({
+      id      : 't_' + Date.now(),
+      anchor  : pending.anchor,
+      prefix  : pending.prefix,
+      suffix  : pending.suffix,
+      comment : text,
+      author,
+      ts      : new Date().toISOString(),
+      resolved: false,
+      replies : [],
+    });
+    persist().then(() => { applyHighlights(); renderSidebar(); });
+    cancelComment();
+  }
+
+  // ── Toggle sidebar ────────────────────────────────────────────────────────────
+  function toggleSidebar() {
+    sidebarVisible = !sidebarVisible;
+    const sb  = document.getElementById('cd-sidebar');
+    const btn = document.getElementById('cd-sb-btn');
+    if (sb)  sb.style.display  = sidebarVisible ? '' : 'none';
+    if (btn) btn.textContent   = sidebarVisible ? 'Hide sidebar' : 'Show sidebar';
+    // Adjust body right padding so content doesn't go under sidebar
+    document.body.style.paddingRight = sidebarVisible ? SIDEBAR_W + 'px' : '0';
+  }
+
+  // ── Inject UI (fixed overlay — no body wrapping) ──────────────────────────────
+  function injectTopbar() {
+    const bar = document.createElement('div');
+    bar.id = 'cd-topbar';
+    bar.style.cssText = `position:fixed;top:0;left:0;right:0;height:${TOPBAR_H}px;background:#fff;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;padding:0 16px;z-index:9000;box-shadow:0 1px 3px rgba(0,0,0,.06)`;
+    bar.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:#94a3b8;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">
+        <span style="color:#475569;font-weight:500">${document.title}</span>
+        <span id="cd-save-ind" style="font-size:11px"></span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+        <span id="cd-open-count" style="font-size:12px;color:#94a3b8"></span>
+        <button id="cd-sb-btn" style="font-size:12px;padding:5px 10px;border:1px solid #e2e8f0;border-radius:6px;background:#fff;cursor:pointer;color:#475569;white-space:nowrap">Hide sidebar</button>
+      </div>`;
+    document.body.appendChild(bar);
+    document.getElementById('cd-sb-btn').addEventListener('click', toggleSidebar);
+  }
+
+  function injectSidebar() {
+    const sb = document.createElement('div');
+    sb.id = 'cd-sidebar';
+    sb.style.cssText = `position:fixed;top:${TOPBAR_H}px;right:0;bottom:0;width:${SIDEBAR_W}px;background:#fff;border-left:1px solid #e2e8f0;display:flex;flex-direction:column;z-index:8999;overflow:hidden`;
+    sb.innerHTML = `
+      <div style="padding:10px 12px 8px;border-bottom:1px solid #e2e8f0;background:#f8fafc;flex-shrink:0">
+        <p style="margin:0;font-size:13px;font-weight:600;color:#1e293b">Review threads</p>
+        <p style="margin:2px 0 0;font-size:11px;color:#94a3b8">Select text to comment</p>
+      </div>
+      <div id="cd-threads" style="flex:1;overflow-y:auto;padding:8px"></div>`;
+    document.body.appendChild(sb);
+  }
+
+  function injectTip() {
+    const tip = document.createElement('div');
+    tip.id = 'cd-tip';
+    tip.textContent = '+ Comment';
+    tip.style.cssText = 'display:none;position:fixed;background:#1e293b;color:#fff;padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;z-index:9100;user-select:none;box-shadow:0 4px 12px rgba(0,0,0,.3);white-space:nowrap';
+    tip.addEventListener('click', startComment);
+    document.body.appendChild(tip);
+  }
+
+  function injectPopup() {
+    const popup = document.createElement('div');
+    popup.id = 'cd-popup';
+    popup.style.cssText = 'display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 16px 40px rgba(0,0,0,.15);padding:14px;z-index:9200;width:260px';
+    popup.innerHTML = `
+      <p style="font-size:11px;color:#94a3b8;margin:0 0 6px">On: <span id="cd-popup-anchor" style="color:#475569;font-style:italic"></span></p>
+      <textarea id="cd-popup-input" rows="3" placeholder="Your comment…"
+        style="width:100%;box-sizing:border-box;border:1px solid #e2e8f0;border-radius:8px;padding:8px;font-size:12px;resize:none;outline:none;font-family:inherit;line-height:1.5"></textarea>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">
+        <span style="font-size:11px;color:#94a3b8">⌘+Enter to post</span>
+        <div style="display:flex;gap:6px">
+          <button id="cd-cancel-btn" style="font-size:12px;padding:5px 8px;background:none;border:none;color:#94a3b8;cursor:pointer">Cancel</button>
+          <button id="cd-submit-btn" style="font-size:12px;padding:5px 12px;background:#2563eb;color:#fff;border:none;border-radius:6px;cursor:pointer">Post</button>
+        </div>
+      </div>`;
+    document.body.appendChild(popup);
+    document.getElementById('cd-cancel-btn').addEventListener('click', cancelComment);
+    document.getElementById('cd-submit-btn').addEventListener('click', submitComment);
+    document.getElementById('cd-popup-input').addEventListener('keydown', e => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submitComment();
+      if (e.key === 'Escape') cancelComment();
+    });
+  }
+
+  function injectStyles() {
+    const s = document.createElement('style');
+    s.textContent = `
+      mark.cd-hl { background:#fef08a; border-bottom:2px solid #ca8a04; cursor:pointer; border-radius:2px; padding:0 1px; }
+      mark.cd-hl:hover { background:#fde047; }
+      mark.cd-resolved { background:#dcfce7 !important; border-bottom-color:#16a34a !important; }
+      #cd-threads::-webkit-scrollbar { width:4px; }
+      #cd-threads::-webkit-scrollbar-thumb { background:#e2e8f0; border-radius:2px; }
+    `;
+    document.head.appendChild(s);
+    // Push body content down and right so it doesn't go under the fixed UI
+    document.body.style.paddingTop    = TOPBAR_H + 8 + 'px';
+    document.body.style.paddingRight  = SIDEBAR_W + 'px';
+    document.body.style.boxSizing     = 'border-box';
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
