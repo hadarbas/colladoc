@@ -6,6 +6,42 @@ You generate a spec or plan as HTML. You or a teammate open it in Chrome and lea
 
 ---
 
+## The workflow
+
+```
+  YOU / TEAMMATE                         AGENT
+  ─────────────────                      ──────────────────────────────────
+
+  "Write a spec for X"         ────►    Creates spec.md
+                                         Asks: "Generate reviewable HTML?"
+
+  "Yes"                        ────►    Creates spec.html  (same name, same folder)
+                                         CollaDoc UI embedded inside
+
+  Open spec.html in Chrome
+  Select text → leave comment
+  Select text → leave comment
+  Close browser
+
+  "Address the feedback"       ────►    Reads spec.html
+                                         Parses open threads (resolved:false)
+                                         ┌─ Correction → edits spec.md silently
+                                         └─ Decision/opinion → embeds as
+                                            > Note (author): ... in spec.md
+                                         Regenerates spec.html
+                                         Marks addressed threads resolved:true
+
+  Review again, repeat                   ◄────  Cycle continues
+```
+
+**File naming:** `spec.md` and `spec.html` always share the same name in the same folder. If `spec.html` already exists when you ask for HTML, the agent updates it — no duplicates.
+
+**When you only have a `.md` file:** ask "generate a reviewable HTML for this file" or "generate HTML for all specs in this folder." The agent creates the `.html` alongside the `.md`. You never create HTML manually.
+
+**When you do not need review:** not every `.md` needs an HTML version. Notes, reference docs, archives — skip it. The agent will ask after finishing a spec but will never create HTML unless you say yes.
+
+---
+
 ## How it works
 
 **File structure per document:**
