@@ -95,15 +95,35 @@ window.__colladocLoaded = true;
     if (saveBtn) saveBtn.style.display = serverOk ? 'none' : '';
   }
 
-  function saveFile() {
-    // Build updated HTML with current annotations baked in, trigger browser Save As
+  async function saveFile() {
     const el = document.getElementById('colladoc-data');
     if (el) el.textContent = '\n' + JSON.stringify(annotations, null, 2) + '\n';
-    const blob = new Blob([document.documentElement.outerHTML], { type: 'text/html' });
+    const content = document.documentElement.outerHTML;
+    const filename = location.pathname.split('/').pop() || 'document.html';
+
+    // File System Access API — opens a Save dialog so user can navigate to the
+    // Drive folder and overwrite the original file directly (no Downloads detour)
+    if (window.showSaveFilePicker) {
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: filename,
+          types: [{ description: 'HTML file', accept: { 'text/html': ['.html'] } }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(content);
+        await writable.close();
+        return;
+      } catch (e) {
+        if (e.name === 'AbortError') return; // user cancelled — do nothing
+        // fall through to download fallback
+      }
+    }
+
+    // Fallback for browsers without File System Access API
+    const blob = new Blob([content], { type: 'text/html' });
     const a    = document.createElement('a');
     a.href     = URL.createObjectURL(blob);
-    // Suggest the same filename so user just navigates to the Drive folder and overwrites
-    a.download = location.pathname.split('/').pop() || 'document.html';
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(a.href);
   }
