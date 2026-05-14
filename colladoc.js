@@ -8,7 +8,7 @@ if (window.__colladocLoaded) { /* prevent double-init */ throw 0; }
 window.__colladocLoaded = true;
 
 (function () {
-  const AUTHOR_CONFIG = '';  // set to 'hadar' or 'yuval' when embedding, or leave '' to prompt
+  const AUTHOR_CONFIG = '';  // set to a name when embedding (e.g. 'alice'), or leave '' to prompt on first use
   // Use same origin when served over http (avoids localhost vs 127.0.0.1 CORS mismatch)
   const SERVER = location.protocol === 'http:' ? '' : 'http://127.0.0.1:3000';
   const SIDEBAR_W     = 272;

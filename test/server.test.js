@@ -65,7 +65,7 @@ describe('POST /colladoc/patch', () => {
     writeFileSync(filePath, TEMPLATE_HTML);
 
     const incoming = [
-      { id: 't_001', anchor: 'Test doc', comment: 'looks good', author: 'hadar',
+      { id: 't_001', anchor: 'Test doc', comment: 'looks good', author: 'alice',
         ts: '2026-05-13T09:00:00Z', resolved: false, replies: [] }
     ];
 
@@ -89,14 +89,14 @@ describe('POST /colladoc/patch', () => {
     const filePath = join(tmpDir, 'concurrent.html');
     // Pre-seed with one thread on disk
     const seedHtml = TEMPLATE_HTML.replace('[]', JSON.stringify([
-      { id: 't_disk', anchor: 'existing', comment: 'on disk', author: 'yuval',
+      { id: 't_disk', anchor: 'existing', comment: 'on disk', author: 'bob',
         ts: '2026-05-13T08:00:00Z', resolved: false, replies: [] }
     ]));
     writeFileSync(filePath, seedHtml);
 
-    // Incoming only contains a NEW thread (simulating Hadar commenting at same time)
+    // Incoming only contains a NEW thread (simulating Alice commenting at same time)
     const incoming = [
-      { id: 't_new', anchor: 'Test doc', comment: 'new from hadar', author: 'hadar',
+      { id: 't_new', anchor: 'Test doc', comment: 'new from alice', author: 'alice',
         ts: '2026-05-13T09:00:00Z', resolved: false, replies: [] }
     ];
 

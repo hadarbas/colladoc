@@ -6,7 +6,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SERVE_DIR="${1:-$HOME/Library/CloudStorage/GoogleDrive-hadar@get-vest.com/My Drive/HadarSystem/Projects/Vest}"
+SERVE_DIR="${1:-$HOME}"
 PORT="${2:-3000}"
 NODE_BIN="$(which node)"
 PLIST="$HOME/Library/LaunchAgents/com.colladoc.server.plist"
@@ -51,5 +51,5 @@ echo "  Logs:    $LOG_DIR"
 echo ""
 echo "To uninstall: launchctl unload $PLIST && rm $PLIST"
 echo ""
-echo "Send Yuval this one-liner to install on his machine:"
-echo "  bash <(curl -fsSL [host your install.sh]) \"[his Drive folder path]\" $PORT"
+echo "To install on another machine:"
+echo "  bash install.sh \"/path/to/your/folder\" $PORT"

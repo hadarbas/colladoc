@@ -104,7 +104,7 @@ When an agent reads your HTML file, the `colladoc-data` block looks like this:
     "id": "t_1715512800000",
     "anchor": "DLOM range: 15%–35%",
     "comment": "Should we let the user override this range?",
-    "author": "yuval",
+    "author": "alice",
     "ts": "2026-05-12T09:15:00.000Z",
     "resolved": false,
     "replies": []

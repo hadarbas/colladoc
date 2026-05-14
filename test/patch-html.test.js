@@ -12,7 +12,7 @@ const SAMPLE_HTML = `<!DOCTYPE html>
 <p>Hello world</p>
 <!-- CollaDoc annotation store — readable by any AI -->
 <script type="application/json" id="colladoc-data">
-[{"id":"t_001","anchor":"Hello","comment":"test","author":"hadar","ts":"2026-05-13T09:00:00Z","resolved":false,"replies":[]}]
+[{"id":"t_001","anchor":"Hello","comment":"test","author":"alice","ts":"2026-05-13T09:00:00Z","resolved":false,"replies":[]}]
 </script>
 </body>
 </html>`;
@@ -53,8 +53,8 @@ not-json
 describe('patchAnnotationBlock', () => {
   it('replaces annotation block content with merged array', () => {
     const merged = [
-      { id: 't_001', anchor: 'Hello', comment: 'test', author: 'hadar', ts: '2026-05-13T09:00:00Z', resolved: false, replies: [] },
-      { id: 't_002', anchor: 'world', comment: 'new', author: 'yuval', ts: '2026-05-13T10:00:00Z', resolved: false, replies: [] }
+      { id: 't_001', anchor: 'Hello', comment: 'test', author: 'alice', ts: '2026-05-13T09:00:00Z', resolved: false, replies: [] },
+      { id: 't_002', anchor: 'world', comment: 'new', author: 'bob', ts: '2026-05-13T10:00:00Z', resolved: false, replies: [] }
     ];
     const patched = patchAnnotationBlock(SAMPLE_HTML, merged);
     const extracted = extractAnnotations(patched);
@@ -71,7 +71,7 @@ describe('patchAnnotationBlock', () => {
 
   it('round-trips — extract after patch returns the merged array', () => {
     const merged = [
-      { id: 't_abc', anchor: 'test', comment: 'hi', author: 'hadar', ts: '2026-05-13T09:00:00Z', resolved: true, replies: [] }
+      { id: 't_abc', anchor: 'test', comment: 'hi', author: 'alice', ts: '2026-05-13T09:00:00Z', resolved: true, replies: [] }
     ];
     const patched = patchAnnotationBlock(EMPTY_HTML, merged);
     const extracted = extractAnnotations(patched);
