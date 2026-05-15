@@ -1,6 +1,9 @@
 import { createServer } from 'node:http';
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
-import { join, extname, resolve } from 'node:path';
+import { join, extname, resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 import { mergeAnnotations } from './merge.js';
 import { extractAnnotations, patchAnnotationBlock } from './patch-html.js';
 
@@ -67,9 +70,10 @@ export function startServer({ port = 3000, serveDir } = {}) {
           return json(res, 400, { error: 'Body must have { file, annotations }' });
         }
         // Resolve relative paths (URL pathnames) against serveDir
-        const filePath = body.file.startsWith('/') && !body.file.startsWith(resolve(serveDir))
-          ? join(serveDir, body.file)
-          : body.file;
+        const decodedFile = decodeURIComponent(body.file);
+        const filePath = decodedFile.startsWith('/') && !decodedFile.startsWith(resolve(serveDir))
+          ? join(serveDir, decodedFile)
+          : decodedFile;
         // Confine writes to serveDir — prevents path traversal via arbitrary file paths
         if (!withinServeDir(serveDir, filePath)) {
           return json(res, 403, { error: 'File outside serve directory' });
@@ -99,18 +103,25 @@ export function startServer({ port = 3000, serveDir } = {}) {
     // ── Index page — lists all CollaDoc HTML files under serveDir ────
     if (req.method === 'GET' && url.pathname === '/') {
       const htmlFiles = [];
+      const SKIP_DIRS = new Set([
+        'node_modules', '.git', '.Trash', 'Library', 'Applications',
+        'Music', 'Movies', 'Pictures', 'System', 'Volumes',
+      ]);
       function walk(dir) {
-        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        let entries;
+        try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+        for (const entry of entries) {
+          if (entry.name.startsWith('.') || SKIP_DIRS.has(entry.name)) continue;
           const full = join(dir, entry.name);
           if (entry.isDirectory()) { walk(full); }
           else if (entry.isFile() && extname(entry.name) === '.html') {
-            // Only include files that have a colladoc-data block
             try {
               const content = readFileSync(full, 'utf8');
-              if (content.includes('id="colladoc-data"')) {
-                const rel  = full.slice(resolve(serveDir).length); // e.g. /workspaces/spec.html
+              if (content.includes('type="application/json" id="colladoc-data"')) {
+                const rel  = full.slice(resolve(serveDir).length);
                 const open = (content.match(/"resolved"\s*:\s*false/g) || []).length;
-                htmlFiles.push({ path: rel, name: entry.name, open });
+                const encodedPath = rel.split('/').map(s => encodeURIComponent(s)).join('/');
+                htmlFiles.push({ path: rel, encodedPath, name: entry.name, open });
               }
             } catch {}
           }
@@ -122,7 +133,7 @@ export function startServer({ port = 3000, serveDir } = {}) {
       const rows = htmlFiles.map(f => `
         <tr>
           <td style="padding:10px 12px">
-            <a href="${f.path}" style="color:#2563eb;text-decoration:none;font-weight:500;font-size:14px">${f.name}</a>
+            <a href="${f.encodedPath}" style="color:#2563eb;text-decoration:none;font-weight:500;font-size:14px">${f.name}</a>
             <div style="font-size:11px;color:#94a3b8;margin-top:2px">${f.path}</div>
           </td>
           <td style="padding:10px 12px;text-align:center">
@@ -160,9 +171,18 @@ export function startServer({ port = 3000, serveDir } = {}) {
       return res.end(html);
     }
 
+    // ── Serve colladoc.js from server's own directory ─────────────
+    if (req.method === 'GET' && url.pathname === '/colladoc.js') {
+      const jsPath = join(__dirname, '..', 'colladoc.js');
+      if (existsSync(jsPath)) {
+        res.writeHead(200, { 'Content-Type': 'application/javascript', ...CORS_HEADERS });
+        return res.end(readFileSync(jsPath));
+      }
+    }
+
     // ── Static file serving ───────────────────────────────────────
     if (req.method === 'GET') {
-      const filePath = join(serveDir, url.pathname);
+      const filePath = join(serveDir, decodeURIComponent(url.pathname));
       // Prevent path traversal — resolve() collapses ../ sequences
       if (!withinServeDir(serveDir, filePath)) {
         return json(res, 403, { error: 'Forbidden' });

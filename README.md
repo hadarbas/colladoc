@@ -163,28 +163,28 @@ Add the following rule to your global `CLAUDE.md` file (`~/.claude/CLAUDE.md`):
 
 When you finish generating any HTML spec, plan, report, or document, always:
 
-1. Embed this block at the end of `<body>`, just before `</body>`:
-```html
-<!-- CollaDoc annotation store — readable by any AI -->
-<script type="application/json" id="colladoc-data">
-[]
-</script>
-<script src="/colladoc.js"></script>
-```
-If the file will not be served from localhost (standalone HTML), inline `colladoc.js` content directly instead of using `src`.
-
-2. Include this in `<head>`:
+1. Add to `<head>`:
 ```html
 <meta name="colladoc" content="v1">
 ```
 
-Rules:
-- The `colladoc-data` block must always be present, even if empty (`[]`)
-- Never pre-populate it — start empty
-- Use exactly `id="colladoc-data"` and `type="application/json"`
-- Place `colladoc-data` BEFORE the `colladoc.js` script tag
+2. Embed at the end of `<body>`, just before `</body>`:
+```html
+<script type="application/json" id="colladoc-data">[]</script>
+<script>/* inline full contents of colladoc.js here */</script>
+```
 
-After completing any spec or plan as a `.md` file, ask: "Want me to generate a reviewable HTML version with CollaDoc?" — but do NOT auto-generate without being asked.
+Always inline the JS — never use `src=`. To find the file:
+```bash
+find $HOME -name colladoc.js -not -path "*/node_modules/*" 2>/dev/null | head -1
+```
+Read that file and paste its full contents inside the `<script>` tag.
+
+Rules:
+- Never pre-populate `colladoc-data` — always start empty `[]`
+- Place `colladoc-data` BEFORE the script tag
+
+After completing any spec or plan as a `.md` file, ask: "Want me to generate a reviewable HTML version?" — do NOT auto-generate without being asked.
 
 When asked to "address feedback" or "resolve comments" on an HTML file:
 1. Read the HTML file
@@ -193,13 +193,13 @@ When asked to "address feedback" or "resolve comments" on an HTML file:
 4. Read the corresponding `.md` source file
 5. Edit the `.md` to address each open thread
 6. Regenerate the HTML from the updated `.md`
-7. In the regenerated HTML, set `"resolved": true` on each thread you addressed
+7. In the regenerated HTML, set `"resolved": true` on each addressed thread
 8. Preserve all threads (resolved and open)
 ````
 
 Or ask Claude Code to do it for you:
 
-> "Add the CollaDoc rule to my global CLAUDE.md. The rule is in the README at [path to this repo]/README.md under '## Set up Claude Code'."
+> "Add the CollaDoc rule to my global CLAUDE.md. The rule is in the README at [path to this repo]/README.md under 'Set up Claude Code'."
 
 ---
 
