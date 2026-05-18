@@ -274,3 +274,10 @@ node colladoc-server.js ./path/to/serve 3000
 ```
 
 Tests cover merge logic, HTML patching, and server endpoints (24 tests, no external dependencies).
+
+---
+
+## Backlog
+
+**Agent-aware section approvals**
+When a reviewer approves a section (green badge), the agent should treat it as frozen and not rewrite it unless there is an open comment thread on that section. Currently approvals are visual-only and the agent ignores them. Implementation: add a rule to the agent instructions to read the `approvals` array in `colladoc-data` and skip sections whose `fingerprint` still matches (i.e. non-stale approvals).
