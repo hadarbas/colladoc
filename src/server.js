@@ -82,11 +82,13 @@ export function startServer({ port = 3000, serveDir } = {}) {
           return json(res, 404, { error: 'File not found' });
         }
         const html = readFileSync(filePath, 'utf8');
-        const onDisk = extractAnnotations(html);
+        const { annotations: onDisk, approvals: onDiskApprovals } = extractAnnotations(html);
         const merged = mergeAnnotations(onDisk, body.annotations);
-        const patched = patchAnnotationBlock(html, merged);
+        // Incoming approvals win (client is authoritative for approvals)
+        const approvals = Array.isArray(body.approvals) ? body.approvals : onDiskApprovals;
+        const patched = patchAnnotationBlock(html, merged, approvals);
         writeFileSync(filePath, patched, 'utf8');
-        json(res, 200, { merged });
+        json(res, 200, { merged, approvals });
       }).catch(err => json(res, 500, { error: err.message }));
       return;
     }

@@ -16,6 +16,7 @@ window.__colladocLoaded = true;
 
   // ── State ─────────────────────────────────────────────────────────────────────
   let annotations    = [];
+  let approvals      = [];     // [{ headingId, text, fingerprint, author, ts }]
   let pending        = null;   // { anchor, prefix, suffix }
   let author         = AUTHOR_CONFIG || localStorage.getItem('colladoc_author') || '';
   let serverOk       = false;
@@ -35,6 +36,7 @@ window.__colladocLoaded = true;
     injectPopup();
     injectTip();
     applyHighlights();
+    applyApprovals();
     renderSidebar();
     checkServer();
     document.addEventListener('mouseup', onMouseUp);
@@ -47,21 +49,39 @@ window.__colladocLoaded = true;
     const lsKey  = 'colladoc_' + location.href;
     const stored = localStorage.getItem(lsKey);
     if (stored) {
-      try { annotations = JSON.parse(stored); return; } catch {}
+      try {
+        const parsed = JSON.parse(stored);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          annotations = parsed.annotations || [];
+          approvals   = parsed.approvals   || [];
+        } else {
+          annotations = parsed || [];
+        }
+        return;
+      } catch {}
     }
     const el = document.getElementById('colladoc-data');
     if (el) {
-      try { annotations = JSON.parse(el.textContent.trim()) || []; } catch {}
+      try {
+        const parsed = JSON.parse(el.textContent.trim()) || [];
+        if (Array.isArray(parsed)) {
+          annotations = parsed;
+        } else {
+          annotations = parsed.annotations || [];
+          approvals   = parsed.approvals   || [];
+        }
+      } catch {}
     }
   }
 
+  function payload() { return { annotations, approvals }; }
+
   async function persist() {
     const lsKey = 'colladoc_' + location.href;
-    localStorage.setItem(lsKey, JSON.stringify(annotations));
+    localStorage.setItem(lsKey, JSON.stringify(payload()));
 
-    // Update in-file block (readable by agent on next Read)
     const el = document.getElementById('colladoc-data');
-    if (el) el.textContent = '\n' + JSON.stringify(annotations, null, 2) + '\n';
+    if (el) el.textContent = '\n' + JSON.stringify(payload(), null, 2) + '\n';
 
     if (serverOk) {
       try {
@@ -69,13 +89,15 @@ window.__colladocLoaded = true;
         const res = await fetch(`${SERVER}/colladoc/patch`, {
           method : 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body   : JSON.stringify({ file: filePath, annotations }),
+          body   : JSON.stringify({ file: filePath, annotations, approvals }),
         });
         if (res.ok) {
-          const { merged } = await res.json();
-          annotations = merged;
-          if (el) el.textContent = '\n' + JSON.stringify(merged, null, 2) + '\n';
-          localStorage.setItem(lsKey, JSON.stringify(merged));
+          const data = await res.json();
+          annotations = data.merged;
+          if (Array.isArray(data.approvals)) approvals = data.approvals;
+          const full = payload();
+          if (el) el.textContent = '\n' + JSON.stringify(full, null, 2) + '\n';
+          localStorage.setItem(lsKey, JSON.stringify(full));
         }
       } catch {}
     }
@@ -143,17 +165,96 @@ window.__colladocLoaded = true;
     };
   }
 
-  function findTextNode(anchor) {
+  function findTextNode(anchor, prefix, suffix) {
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-    let n;
+    let best = null, bestScore = -1, n;
     while ((n = walker.nextNode())) {
-      // Skip script/style nodes
       const tag = n.parentElement?.tagName;
       if (tag === 'SCRIPT' || tag === 'STYLE') continue;
-      const i = n.textContent.indexOf(anchor);
-      if (i !== -1) return { node: n, index: i };
+      let i = -1, search = n.textContent;
+      let from = 0;
+      while ((i = search.indexOf(anchor, from)) !== -1) {
+        let score = 0;
+        if (prefix && search.slice(Math.max(0, i - prefix.length), i).endsWith(prefix)) score += 2;
+        if (suffix && search.slice(i + anchor.length, i + anchor.length + suffix.length).startsWith(suffix)) score += 2;
+        if (score > bestScore) { bestScore = score; best = { node: n, index: i }; }
+        from = i + 1;
+      }
     }
-    return null;
+    return best;
+  }
+
+  // ── Section approvals ─────────────────────────────────────────────────────────
+  function sectionFingerprint(heading) {
+    // Text content of all siblings until the next same-or-higher heading
+    const level = parseInt(heading.tagName[1]);
+    let text = heading.textContent;
+    let el = heading.nextElementSibling;
+    while (el) {
+      const t = el.tagName;
+      if (/^H[1-6]$/.test(t) && parseInt(t[1]) <= level) break;
+      text += el.textContent;
+      el = el.nextElementSibling;
+    }
+    // Simple djb2 hash
+    let h = 5381;
+    for (let i = 0; i < text.length; i++) h = ((h << 5) + h) ^ text.charCodeAt(i);
+    return (h >>> 0).toString(36);
+  }
+
+  function headingId(heading) {
+    if (!heading.id) heading.id = 'cd-h-' + Math.random().toString(36).slice(2);
+    return heading.id;
+  }
+
+  function applyApprovals() {
+    // Remove old stamps
+    document.querySelectorAll('.cd-approve-btn, .cd-approve-stamp').forEach(el => el.remove());
+    document.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(h => {
+      if (h.closest('#cd-topbar,#cd-sidebar,#cd-popup,#cd-tip')) return;
+      const hid  = headingId(h);
+      const fp   = sectionFingerprint(h);
+      const stamp = approvals.find(a => a.headingId === hid);
+      h.style.position = 'relative';
+
+      if (stamp) {
+        const stale = stamp.fingerprint !== fp;
+        const badge = document.createElement('span');
+        badge.className = 'cd-approve-stamp';
+        badge.dataset.hid = hid;
+        const date = new Date(stamp.ts).toLocaleDateString('en-US', { month:'short', day:'numeric' });
+        badge.title = stale
+          ? `Approved by ${stamp.author} on ${date} — content changed since approval`
+          : `Approved by ${stamp.author} on ${date}`;
+        badge.style.cssText = `margin-left:8px;font-size:11px;font-weight:500;padding:1px 7px;border-radius:999px;cursor:pointer;vertical-align:middle;${
+          stale
+            ? 'background:#fef3c7;color:#92400e;border:1px solid #fcd34d'
+            : 'background:#dcfce7;color:#166534;border:1px solid #86efac'}`;
+        badge.textContent = stale ? `✓ stale` : `✓ ${stamp.author}`;
+        badge.addEventListener('click', e => { e.stopPropagation(); unapproveSection(hid); });
+        h.appendChild(badge);
+      } else {
+        const btn = document.createElement('span');
+        btn.className = 'cd-approve-btn';
+        btn.dataset.hid = hid;
+        btn.textContent = '✓ Approve';
+        btn.style.cssText = 'margin-left:8px;font-size:11px;font-weight:500;padding:1px 7px;border-radius:999px;cursor:pointer;vertical-align:middle;opacity:0;transition:opacity .15s;background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0';
+        btn.addEventListener('click', e => { e.stopPropagation(); approveSection(hid, fp); });
+        h.appendChild(btn);
+        h.addEventListener('mouseenter', () => btn.style.opacity = '1');
+        h.addEventListener('mouseleave', () => btn.style.opacity = '0');
+      }
+    });
+  }
+
+  function approveSection(hid, fp) {
+    approvals = approvals.filter(a => a.headingId !== hid);
+    approvals.push({ headingId: hid, fingerprint: fp, author, ts: new Date().toISOString() });
+    persist().then(applyApprovals);
+  }
+  function unapproveSection(hid) {
+    approvals = approvals.filter(a => a.headingId !== hid);
+    persist().then(applyApprovals);
   }
 
   // ── Highlights ────────────────────────────────────────────────────────────────
@@ -166,7 +267,7 @@ window.__colladocLoaded = true;
   }
 
   function markText(a) {
-    const found = findTextNode(a.anchor);
+    const found = findTextNode(a.anchor, a.prefix, a.suffix);
     if (!found) return;
     const { node, index } = found;
     const mark      = document.createElement('mark');
@@ -278,16 +379,28 @@ window.__colladocLoaded = true;
   }
 
   function focusPair(id) {
-    document.querySelectorAll('mark.cd-hl').forEach(m => m.style.outline = '');
+    document.querySelectorAll('mark.cd-hl').forEach(m => m.classList.remove('cd-active'));
     const mk = document.querySelector(`mark.cd-hl[data-id="${id}"]`);
-    if (mk) mk.style.outline = '2px solid #3b82f6';
-    document.querySelectorAll('[id^="cd-card-"]').forEach(c => c.style.background = '#fff');
+    if (mk) mk.classList.add('cd-active');
+    document.querySelectorAll('[id^="cd-card-"]').forEach(c => c.classList.remove('cd-card-active'));
     const cd = document.getElementById('cd-card-' + id);
-    if (cd) { cd.style.background = '#eff6ff'; cd.scrollIntoView({ block:'nearest', behavior:'smooth' }); }
+    if (cd) {
+      cd.classList.add('cd-card-active');
+      // Manually scroll the fixed sidebar container
+      const threads = document.getElementById('cd-threads');
+      if (threads) {
+        const containerTop = threads.getBoundingClientRect().top;
+        const cardTop = cd.getBoundingClientRect().top;
+        threads.scrollTop += (cardTop - containerTop) - threads.clientHeight / 2 + cd.offsetHeight / 2;
+      }
+    }
   }
   function scrollToMark(id) {
     const m = document.querySelector(`mark.cd-hl[data-id="${id}"]`);
-    if (m) m.scrollIntoView({ block:'center', behavior:'smooth' });
+    if (m) {
+      const markTop = m.getBoundingClientRect().top + window.scrollY;
+      window.scrollTo({ top: markTop - window.innerHeight / 2, behavior: 'smooth' });
+    }
     focusPair(id);
   }
 
@@ -454,7 +567,9 @@ window.__colladocLoaded = true;
     s.textContent = `
       mark.cd-hl { background:#fef08a; border-bottom:2px solid #ca8a04; cursor:pointer; border-radius:2px; padding:0 1px; }
       mark.cd-hl:hover { background:#fde047; }
+      mark.cd-hl.cd-active { background:#fed7aa !important; border-bottom-color:#ea580c !important; outline:2px solid #f97316; outline-offset:1px; }
       mark.cd-resolved { background:#dcfce7 !important; border-bottom-color:#16a34a !important; }
+      [id^="cd-card-"].cd-card-active { background:#eff6ff !important; border-color:#93c5fd !important; }
       #cd-threads::-webkit-scrollbar { width:4px; }
       #cd-threads::-webkit-scrollbar-thumb { background:#e2e8f0; border-radius:2px; }
     `;

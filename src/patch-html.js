@@ -10,17 +10,22 @@ function findLastMatch(html) {
 
 export function extractAnnotations(html) {
   const match = findLastMatch(html);
-  if (!match) return [];
+  if (!match) return { annotations: [], approvals: [] };
   try {
-    return JSON.parse(match[2].trim());
+    const parsed = JSON.parse(match[2].trim());
+    if (Array.isArray(parsed)) return { annotations: parsed, approvals: [] };
+    return { annotations: parsed.annotations || [], approvals: parsed.approvals || [] };
   } catch (e) {
     throw new SyntaxError(`JSON parse failed in colladoc-data block: ${e.message}`);
   }
 }
 
-export function patchAnnotationBlock(html, mergedAnnotations) {
+export function patchAnnotationBlock(html, mergedAnnotations, approvals) {
   const match = findLastMatch(html);
   if (!match) throw new Error('colladoc-data block not found in HTML');
-  const replacement = `${match[1]}\n${JSON.stringify(mergedAnnotations, null, 2)}\n${match[3]}`;
+  const data = approvals && approvals.length
+    ? { annotations: mergedAnnotations, approvals }
+    : mergedAnnotations;
+  const replacement = `${match[1]}\n${JSON.stringify(data, null, 2)}\n${match[3]}`;
   return html.slice(0, match.index) + replacement + html.slice(match.index + match[0].length);
 }

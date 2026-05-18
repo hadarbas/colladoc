@@ -26,20 +26,22 @@ const EMPTY_HTML = `<!DOCTYPE html>
 
 describe('extractAnnotations', () => {
   it('parses the annotation block from valid HTML', () => {
-    const annotations = extractAnnotations(SAMPLE_HTML);
+    const { annotations } = extractAnnotations(SAMPLE_HTML);
     assert.equal(annotations.length, 1);
     assert.equal(annotations[0].id, 't_001');
   });
 
   it('returns empty array for empty annotation block', () => {
-    const annotations = extractAnnotations(EMPTY_HTML);
+    const { annotations, approvals } = extractAnnotations(EMPTY_HTML);
     assert.deepEqual(annotations, []);
+    assert.deepEqual(approvals, []);
   });
 
   it('returns empty array when colladoc-data block is absent', () => {
     const html = '<html><body><p>no annotations here</p></body></html>';
-    const annotations = extractAnnotations(html);
+    const { annotations, approvals } = extractAnnotations(html);
     assert.deepEqual(annotations, []);
+    assert.deepEqual(approvals, []);
   });
 
   it('throws on malformed JSON in annotation block', () => {
@@ -57,9 +59,9 @@ describe('patchAnnotationBlock', () => {
       { id: 't_002', anchor: 'world', comment: 'new', author: 'bob', ts: '2026-05-13T10:00:00Z', resolved: false, replies: [] }
     ];
     const patched = patchAnnotationBlock(SAMPLE_HTML, merged);
-    const extracted = extractAnnotations(patched);
-    assert.equal(extracted.length, 2);
-    assert.ok(extracted.find(a => a.id === 't_002'));
+    const { annotations } = extractAnnotations(patched);
+    assert.equal(annotations.length, 2);
+    assert.ok(annotations.find(a => a.id === 't_002'));
   });
 
   it('preserves all HTML outside the annotation block', () => {
@@ -74,8 +76,8 @@ describe('patchAnnotationBlock', () => {
       { id: 't_abc', anchor: 'test', comment: 'hi', author: 'alice', ts: '2026-05-13T09:00:00Z', resolved: true, replies: [] }
     ];
     const patched = patchAnnotationBlock(EMPTY_HTML, merged);
-    const extracted = extractAnnotations(patched);
-    assert.deepEqual(extracted, merged);
+    const { annotations } = extractAnnotations(patched);
+    assert.deepEqual(annotations, merged);
   });
 
   it('throws if colladoc-data block is not found in HTML', () => {
