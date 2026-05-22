@@ -545,9 +545,10 @@ window.__colladocLoaded = true;
 
   // ── Clean resolved ────────────────────────────────────────────────────────────
   function cleanResolved() {
-    const count = annotations.filter(a => a.resolved).length;
-    if (!count) return;
-    if (!confirm(`Remove ${count} resolved thread${count === 1 ? '' : 's'} permanently?`)) return;
+    const resolvedThreads = annotations.filter(a => a.resolved);
+    if (!resolvedThreads.length) return;
+    if (!confirm(`Remove ${resolvedThreads.length} resolved thread${resolvedThreads.length === 1 ? '' : 's'} permanently?`)) return;
+    resolvedThreads.forEach(a => deletedIds.add(a.id));
     annotations = annotations.filter(a => !a.resolved);
     persist().then(() => { applyHighlights(); renderSidebar(); });
   }

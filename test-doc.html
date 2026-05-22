@@ -52,11 +52,12 @@
     "anchor": "Edit and delete",
     "prefix": "",
     "suffix": " — you can now",
-    "comment": "G2 test: this comment is authored by hadar — you should see pencil and X icons. Try editing it (fix a typo) or deleting it.",
+    "comment": "G2 test: this comment is authored by hadar — you should see pencil and X icons. Try editing it (fix a typo) or deleting it.dsf sfds f",
     "author": "hadar",
     "ts": "2026-05-21T11:00:00.000Z",
     "resolved": false,
-    "replies": []
+    "replies": [],
+    "editedAt": "2026-05-22T21:39:39.397Z"
   },
   {
     "id": "t_seed_resolved",
@@ -74,11 +75,12 @@
     "anchor": "Sync warning — when the server is running, the topbar shows an amber \"Out of sync\" badge if the .md file was modified after the HTML was last generated.\n\n  ",
     "prefix": "em from the JSON.\n  ",
     "suffix": "How to test✓ Approve",
-    "comment": "tell me whats wrongf/",
+    "comment": "tell me whats wrongf/ ad",
     "author": "hadar",
     "ts": "2026-05-22T20:24:36.858Z",
-    "resolved": false,
-    "replies": []
+    "resolved": true,
+    "replies": [],
+    "editedAt": "2026-05-22T21:37:23.948Z"
   }
 ]
 </script>
@@ -630,9 +632,10 @@ window.__colladocLoaded = true;
 
   // ── Clean resolved ────────────────────────────────────────────────────────────
   function cleanResolved() {
-    const count = annotations.filter(a => a.resolved).length;
-    if (!count) return;
-    if (!confirm(`Remove ${count} resolved thread${count === 1 ? '' : 's'} permanently?`)) return;
+    const resolvedThreads = annotations.filter(a => a.resolved);
+    if (!resolvedThreads.length) return;
+    if (!confirm(`Remove ${resolvedThreads.length} resolved thread${resolvedThreads.length === 1 ? '' : 's'} permanently?`)) return;
+    resolvedThreads.forEach(a => deletedIds.add(a.id));
     annotations = annotations.filter(a => !a.resolved);
     persist().then(() => { applyHighlights(); renderSidebar(); });
   }

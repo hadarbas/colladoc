@@ -1,7 +1,8 @@
 /**
  * Merge two annotation arrays by id.
  * Union, dedup by id, sort by ts ascending.
- * For duplicate ids: incoming wins for resolved + replies fields.
+ * For duplicate ids: incoming wins for all mutable fields (comment, editedAt,
+ * resolved). Replies use longest-wins to avoid dropping concurrent replies.
  */
 export function mergeAnnotations(onDisk, incoming) {
   const map = new Map();
@@ -13,12 +14,11 @@ export function mergeAnnotations(onDisk, incoming) {
   for (const a of incoming) {
     if (map.has(a.id)) {
       const existing = map.get(a.id);
-      // Incoming wins for resolved state and replies
-      const inReplies  = Array.isArray(a.replies)        ? a.replies        : [];
-      const exReplies  = Array.isArray(existing.replies) ? existing.replies : [];
+      const inReplies = Array.isArray(a.replies)        ? a.replies        : [];
+      const exReplies = Array.isArray(existing.replies) ? existing.replies : [];
       map.set(a.id, {
         ...existing,
-        resolved: a.resolved,
+        ...a,
         replies: inReplies.length >= exReplies.length ? inReplies : exReplies,
       });
     } else {

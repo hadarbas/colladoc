@@ -86,6 +86,19 @@ describe('mergeAnnotations', () => {
     assert.equal(merged[0].id, 't_001');
   });
 
+  it('preserves edited comment text and editedAt from incoming', () => {
+    const onDisk = [
+      { id: 't_001', anchor: 'A', comment: 'original', author: 'alice', ts: '2026-05-13T09:00:00Z', resolved: false, replies: [] }
+    ];
+    const incoming = [
+      { id: 't_001', anchor: 'A', comment: 'edited text', author: 'alice', ts: '2026-05-13T09:00:00Z', resolved: false, replies: [], editedAt: '2026-05-23T12:00:00Z' }
+    ];
+    const merged = mergeAnnotations(onDisk, incoming);
+    assert.equal(merged.length, 1);
+    assert.equal(merged[0].comment, 'edited text');
+    assert.equal(merged[0].editedAt, '2026-05-23T12:00:00Z');
+  });
+
   it('merges replies — incoming replies win if thread id matches', () => {
     const onDisk = [
       { id: 't_001', anchor: 'A', comment: 'q', author: 'bob', ts: '2026-05-13T09:00:00Z', resolved: false, replies: [] }
