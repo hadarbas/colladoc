@@ -369,7 +369,7 @@ window.__colladocLoaded = true;
   function card(a) {
     const isLost    = lostAnchors.has(a.id);
     const isEditing = editingId === a.id;
-    const canEdit   = a.author === author;
+    const canEdit   = a.author.toLowerCase() === author.toLowerCase();
 
     const c   = document.createElement('div');
     c.id      = 'cd-card-' + a.id;
@@ -528,7 +528,7 @@ window.__colladocLoaded = true;
   }
   function deleteComment(id) {
     const a = annotations.find(x => x.id === id);
-    if (!a || a.author !== author) return;
+    if (!a || a.author.toLowerCase() !== author.toLowerCase()) return;
     if (!confirm('Delete this comment?')) return;
     deletedIds.add(id);
     annotations = annotations.filter(x => x.id !== id);
@@ -536,7 +536,7 @@ window.__colladocLoaded = true;
   }
   function editComment(id, newText) {
     const a = annotations.find(x => x.id === id);
-    if (!a || a.author !== author) return;
+    if (!a || a.author.toLowerCase() !== author.toLowerCase()) return;
     a.comment  = newText;
     a.editedAt = new Date().toISOString();
     editingId  = null;
