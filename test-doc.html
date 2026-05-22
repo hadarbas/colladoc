@@ -86,7 +86,7 @@
 /* CollaDoc v1 — embedded annotation layer
  * Drop this script into any HTML file. Injects a fixed topbar + sidebar overlay.
  * Does NOT wrap or move body content — avoids double-init from script tag relocation.
- * Agent reads: <script id="colladoc-data"> for open threads (resolved:false).
+ * Agent reads: script#colladoc-data for open threads (resolved:false).
  * Server (optional, LaunchAgent): POST /colladoc/patch for auto-save + conflict merge.
  */
 if (window.__colladocLoaded) { /* prevent double-init */ throw 0; }
