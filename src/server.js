@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 import { mergeAnnotations } from './merge.js';
 import { extractAnnotations, patchAnnotationBlock } from './patch-html.js';
+import { injectLatestColladoc } from './inject-script.js';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -223,6 +224,12 @@ export function startServer({ port = 3000, serveDir } = {}) {
       }
       if (existsSync(filePath)) {
         const ext = extname(filePath);
+        if (ext === '.html') {
+          const raw = readFileSync(filePath, 'utf8');
+          const out = injectLatestColladoc(raw);
+          res.writeHead(200, { 'Content-Type': MIME['.html'] });
+          return res.end(out);
+        }
         res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
         return res.end(readFileSync(filePath));
       }
