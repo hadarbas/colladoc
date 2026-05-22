@@ -90,7 +90,10 @@ Not every markdown file needs an HTML version. Reference docs, notes, archives �
 5. The comment appears highlighted in yellow in the document and as a card in the right sidebar
 6. To reply, type in the reply field inside a card and press Enter
 7. To resolve a thread, click the checkmark. To reopen it, click "resolved ↩"
-8. The agent reads open threads (`"resolved": false`) and addresses them in the next cycle
+8. To edit your own comment, click the pencil icon. Save with Cmd+Enter or the Save button
+9. To delete your own comment, click the X icon and confirm
+10. To purge all resolved threads at once, click **Clean N resolved** in the topbar
+11. The agent reads open threads (`"resolved": false`) and addresses them in the next cycle
 
 ---
 
@@ -257,8 +260,9 @@ spec.html
 
 colladoc-server.js
   └── src/server.js
-        ├── POST /colladoc/patch  → merge by id → write to disk
-        └── GET  /colladoc/files  → list .html files in serve dir
+        ├── POST /colladoc/patch       → merge by id → write to disk
+        ├── GET  /colladoc/files       → list .html files in serve dir
+        └── GET  /colladoc/sync-status → compare .md mtime vs lastSynced timestamp
 
 src/merge.js      annotation merge logic
 src/patch-html.js extract / replace colladoc-data block
@@ -273,7 +277,7 @@ npm test          # run all tests (Node built-in test runner, no deps)
 node colladoc-server.js ./path/to/serve 3000
 ```
 
-Tests cover merge logic, HTML patching, and server endpoints (24 tests, no external dependencies).
+Tests cover merge logic, HTML patching, server endpoints, and new features (39 tests, no external dependencies).
 
 ---
 

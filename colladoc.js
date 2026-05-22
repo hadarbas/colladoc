@@ -14,6 +14,9 @@ window.__colladocLoaded = true;
   const SIDEBAR_W     = 272;
   const TOPBAR_H      = 44;
 
+  // Escape HTML special chars to prevent injection via user-supplied text in innerHTML
+  const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
   // ── State ─────────────────────────────────────────────────────────────────────
   let annotations    = [];
   let approvals      = [];     // [{ headingId, text, fingerprint, author, ts }]
@@ -21,6 +24,9 @@ window.__colladocLoaded = true;
   let author         = AUTHOR_CONFIG || localStorage.getItem('colladoc_author') || '';
   let serverOk       = false;
   let sidebarVisible = true;
+  let lostAnchors    = new Set();  // ids of annotations whose anchor text wasn't found in document
+  let editingId      = null;       // id of annotation currently being inline-edited
+  let lastSynced     = null;       // ISO timestamp set by agent when HTML was last regenerated from MD
 
   // ── Boot ──────────────────────────────────────────────────────────────────────
   function init() {
@@ -54,6 +60,7 @@ window.__colladocLoaded = true;
         if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
           annotations = parsed.annotations || [];
           approvals   = parsed.approvals   || [];
+          lastSynced  = parsed.lastSynced  || null;
         } else {
           annotations = parsed || [];
         }
@@ -69,12 +76,17 @@ window.__colladocLoaded = true;
         } else {
           annotations = parsed.annotations || [];
           approvals   = parsed.approvals   || [];
+          lastSynced  = parsed.lastSynced  || null;
         }
       } catch {}
     }
   }
 
-  function payload() { return { annotations, approvals }; }
+  function payload() {
+    const p = { annotations, approvals };
+    if (lastSynced) p.lastSynced = lastSynced;
+    return p;
+  }
 
   async function persist() {
     const lsKey = 'colladoc_' + location.href;
@@ -118,6 +130,45 @@ window.__colladocLoaded = true;
     if (saveBtn) saveBtn.style.display = serverOk ? 'none' : '';
     // Flush any queued localStorage annotations now that server is reachable
     if (serverOk && annotations.length > 0) persist();
+    if (serverOk) checkSync();
+  }
+
+  async function checkSync() {
+    const filePath = decodeURIComponent(location.pathname);
+    const params = new URLSearchParams({ file: filePath });
+    if (lastSynced) params.set('lastSynced', lastSynced);
+    try {
+      const r = await fetch(`${SERVER}/colladoc/sync-status?${params}`, { signal: AbortSignal.timeout(800) });
+      if (!r.ok) return;
+      const data = await r.json();
+      const syncInd = document.getElementById('cd-sync-ind');
+      if (syncInd) {
+        if (!data.mdExists) {
+          syncInd.textContent = 'No .md source';
+          syncInd.style.color = '#92400e';
+          syncInd.style.display = '';
+        } else if (!data.synced) {
+          syncInd.textContent = 'Out of sync';
+          syncInd.title = 'MD file changed since last HTML generation';
+          syncInd.style.color = '#92400e';
+          syncInd.style.display = '';
+        } else {
+          syncInd.style.display = 'none';
+        }
+      }
+      // Update sidebar footer
+      const foot = document.getElementById('cd-md-source');
+      if (foot) {
+        const mdName = filePath.split('/').pop().replace(/\.html$/, '.md');
+        if (data.mdExists) {
+          foot.textContent = `Source: ${mdName}`;
+          foot.style.color = '#94a3b8';
+        } else {
+          foot.textContent = `No source: ${mdName} missing`;
+          foot.style.color = '#f59e0b';
+        }
+      }
+    } catch {}
   }
 
   async function saveFile() {
@@ -263,12 +314,15 @@ window.__colladocLoaded = true;
       m.replaceWith(document.createTextNode(m.textContent));
     });
     document.body.normalize();
-    [...annotations].reverse().forEach(markText);
+    lostAnchors = new Set();
+    [...annotations].reverse().forEach(a => {
+      if (!markText(a)) lostAnchors.add(a.id);
+    });
   }
 
   function markText(a) {
     const found = findTextNode(a.anchor, a.prefix, a.suffix);
-    if (!found) return;
+    if (!found) return false;
     const { node, index } = found;
     const mark      = document.createElement('mark');
     mark.className  = 'cd-hl' + (a.resolved ? ' cd-resolved' : '');
@@ -279,6 +333,7 @@ window.__colladocLoaded = true;
     const before = document.createTextNode(node.textContent.slice(0, index));
     const after  = document.createTextNode(node.textContent.slice(index + a.anchor.length));
     node.replaceWith(before, mark, after);
+    return true;
   }
 
   // ── Sidebar render ────────────────────────────────────────────────────────────
@@ -299,6 +354,7 @@ window.__colladocLoaded = true;
     }
     const cnt = document.getElementById('cd-open-count');
     if (cnt) cnt.textContent = open.length === 1 ? '1 open' : `${open.length} open`;
+    updateCleanBtn();
   }
 
   function label(txt) {
@@ -309,36 +365,109 @@ window.__colladocLoaded = true;
   }
 
   function card(a) {
+    const isLost    = lostAnchors.has(a.id);
+    const isEditing = editingId === a.id;
+    const canEdit   = a.author === author;
+
     const c   = document.createElement('div');
     c.id      = 'cd-card-' + a.id;
-    c.style.cssText = `background:#fff;border:1px solid ${a.resolved ? '#f1f5f9' : '#e2e8f0'};border-radius:10px;padding:10px 12px;cursor:pointer;margin-bottom:6px`;
+    const borderCol = isLost ? '#fcd34d' : (a.resolved ? '#f1f5f9' : '#e2e8f0');
+    const bgCol     = isLost ? '#fffbeb' : '#fff';
+    c.style.cssText = `background:${bgCol};border:1px solid ${borderCol};border-radius:10px;padding:10px 12px;cursor:pointer;margin-bottom:6px`;
     c.addEventListener('click', () => scrollToMark(a.id));
+
     const col  = aColor(a.author);
     const date = new Date(a.ts).toLocaleDateString('en-US', { month:'short', day:'numeric' });
-    const prev = a.anchor.length > 30 ? a.anchor.slice(0,30) + '…' : a.anchor;
+
+    // Action buttons row
+    const resolveBtn = a.resolved
+      ? `<button data-action="unresolve" data-id="${a.id}" style="font-size:11px;color:#10b981;background:none;border:none;cursor:pointer;font-weight:500;padding:0">resolved ↩</button>`
+      : `<button data-action="resolve"   data-id="${a.id}" style="font-size:15px;color:#cbd5e1;background:none;border:none;cursor:pointer;line-height:1;padding:0" title="Mark resolved">✓</button>`;
+
+    const editDeleteBtns = (canEdit && !isEditing) ? `
+      <button data-action="edit"   data-id="${a.id}" style="font-size:13px;color:#94a3b8;background:none;border:none;cursor:pointer;padding:0 2px;line-height:1" title="Edit comment">✎</button>
+      <button data-action="delete" data-id="${a.id}" style="font-size:12px;color:#94a3b8;background:none;border:none;cursor:pointer;padding:0 2px;line-height:1" title="Delete comment">✕</button>
+    ` : '';
+
+    // Anchor preview — ghost quote for lost anchors
+    let anchorLine;
+    if (isLost) {
+      const pre    = a.prefix ? `…${esc(a.prefix)}` : '';
+      const suf    = a.suffix ? `${esc(a.suffix)}…` : '';
+      const anchor = a.anchor.length > 25 ? esc(a.anchor.slice(0,25)) + '…' : esc(a.anchor);
+      anchorLine = `<p style="font-size:11px;color:#94a3b8;margin:0 0 2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+        <span style="color:#b45309">${pre}</span><mark style="background:#fef08a;padding:0 2px;border-radius:2px;color:#92400e;font-style:normal">${anchor}</mark><span style="color:#b45309">${suf}</span>
+      </p>
+      <p style="font-size:10px;color:#b45309;margin:0 0 4px;font-style:italic">Original text not found — content may have changed</p>`;
+    } else {
+      const prev = a.anchor.length > 30 ? esc(a.anchor.slice(0,30)) + '…' : esc(a.anchor);
+      anchorLine = `<p style="font-size:11px;color:#94a3b8;font-style:italic;margin:0 0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">"${prev}"</p>`;
+    }
+
+    // Replies HTML
+    const repliesHtml = a.replies.map(r => `
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid #f1f5f9;display:flex;gap:6px">
+        <div style="width:14px;height:14px;border-radius:50%;background:${aColor(r.author)};color:#fff;font-size:8px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px">${esc(r.author[0].toUpperCase())}</div>
+        <p style="font-size:11px;color:#475569;margin:0;line-height:1.5">${esc(r.text)}</p>
+      </div>`).join('');
+
+    const replyInput = (!a.resolved && !isEditing) ? `
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid #f1f5f9">
+        <input data-reply-id="${a.id}" placeholder="Reply and press Enter…"
+          style="width:100%;font-size:11px;color:#475569;background:transparent;border:none;outline:none;box-sizing:border-box"/>
+      </div>` : '';
+
     c.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
         <div style="display:flex;align-items:center;gap:5px">
-          <div style="width:18px;height:18px;border-radius:50%;background:${col};color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${a.author[0].toUpperCase()}</div>
-          <span style="font-size:12px;font-weight:600;color:#1e293b">${a.author}</span>
+          <div style="width:18px;height:18px;border-radius:50%;background:${col};color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${esc(a.author[0].toUpperCase())}</div>
+          <span style="font-size:12px;font-weight:600;color:#1e293b">${esc(a.author)}</span>
           <span style="font-size:11px;color:#94a3b8">${date}</span>
         </div>
-        ${a.resolved
-          ? `<button data-action="unresolve" data-id="${a.id}" style="font-size:11px;color:#10b981;background:none;border:none;cursor:pointer;font-weight:500;padding:0">resolved ↩</button>`
-          : `<button data-action="resolve"   data-id="${a.id}" style="font-size:15px;color:#cbd5e1;background:none;border:none;cursor:pointer;line-height:1;padding:0" title="Mark resolved">✓</button>`}
+        <div style="display:flex;align-items:center;gap:4px">
+          ${editDeleteBtns}
+          ${resolveBtn}
+        </div>
       </div>
-      <p style="font-size:11px;color:#94a3b8;font-style:italic;margin:0 0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">"${prev}"</p>
-      <p style="font-size:12px;color:#1e293b;line-height:1.5;margin:0">${a.comment}</p>
-      ${a.replies.map(r => `
-        <div style="margin-top:8px;padding-top:8px;border-top:1px solid #f1f5f9;display:flex;gap:6px">
-          <div style="width:14px;height:14px;border-radius:50%;background:${aColor(r.author)};color:#fff;font-size:8px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px">${r.author[0].toUpperCase()}</div>
-          <p style="font-size:11px;color:#475569;margin:0;line-height:1.5">${r.text}</p>
-        </div>`).join('')}
-      ${!a.resolved ? `
-        <div style="margin-top:8px;padding-top:8px;border-top:1px solid #f1f5f9">
-          <input data-reply-id="${a.id}" placeholder="Reply and press Enter…"
-            style="width:100%;font-size:11px;color:#475569;background:transparent;border:none;outline:none;box-sizing:border-box"/>
-        </div>` : ''}`;
+      ${anchorLine}
+      <div data-comment-slot></div>
+      ${repliesHtml}
+      ${replyInput}`;
+
+    // Insert comment body — use programmatic element for edit mode to avoid
+    // issues with user text containing </textarea> or other HTML in innerHTML
+    const slot = c.querySelector('[data-comment-slot]');
+    if (isEditing) {
+      const ta = document.createElement('textarea');
+      ta.dataset.editId = a.id;
+      ta.value = a.comment;
+      ta.style.cssText = 'width:100%;box-sizing:border-box;border:1px solid #2563eb;border-radius:6px;padding:6px 8px;font-size:12px;line-height:1.5;resize:none;outline:none;font-family:inherit;min-height:60px';
+      ta.addEventListener('click', e => e.stopPropagation());
+
+      const btnsDiv = document.createElement('div');
+      btnsDiv.style.cssText = 'display:flex;gap:4px;margin-top:6px;justify-content:flex-end';
+      btnsDiv.addEventListener('click', e => e.stopPropagation());
+      btnsDiv.innerHTML = `
+        <button data-action="edit-cancel" data-id="${a.id}" style="font-size:11px;padding:3px 8px;background:none;border:1px solid #e2e8f0;border-radius:5px;cursor:pointer;color:#94a3b8">Cancel</button>
+        <button data-action="edit-save"   data-id="${a.id}" style="font-size:11px;padding:3px 8px;background:#2563eb;color:#fff;border:none;border-radius:5px;cursor:pointer">Save</button>`;
+
+      slot.appendChild(ta);
+      slot.appendChild(btnsDiv);
+      // Focus + move cursor to end after render
+      setTimeout(() => { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }, 0);
+    } else {
+      const p = document.createElement('p');
+      p.style.cssText = 'font-size:12px;color:#1e293b;line-height:1.5;margin:0';
+      p.textContent = a.comment;
+      if (a.editedAt) {
+        const edited = document.createElement('span');
+        edited.style.cssText = 'font-size:10px;color:#94a3b8;margin-left:4px';
+        edited.textContent = '(edited)';
+        p.appendChild(edited);
+      }
+      slot.appendChild(p);
+    }
+
     return c;
   }
 
@@ -348,11 +477,29 @@ window.__colladocLoaded = true;
     if (btn) {
       e.stopPropagation();
       const id = btn.dataset.id;
-      if (btn.dataset.action === 'resolve')   { resolve(id); }
-      if (btn.dataset.action === 'unresolve') { unresolve(id); }
+      if (btn.dataset.action === 'resolve')     { resolve(id); }
+      if (btn.dataset.action === 'unresolve')   { unresolve(id); }
+      if (btn.dataset.action === 'delete')      { deleteComment(id); }
+      if (btn.dataset.action === 'edit')        { editingId = id; renderSidebar(); }
+      if (btn.dataset.action === 'edit-cancel') { editingId = null; renderSidebar(); }
+      if (btn.dataset.action === 'edit-save') {
+        const ta = document.querySelector(`[data-edit-id="${id}"]`);
+        if (ta && ta.value.trim()) { editComment(id, ta.value.trim()); }
+        else { editingId = null; renderSidebar(); }
+      }
     }
   });
   document.addEventListener('keydown', e => {
+    // Edit textarea: Cmd+Enter saves, Escape cancels
+    const ta = e.target.closest('[data-edit-id]');
+    if (ta) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault();
+        if (ta.value.trim()) editComment(ta.dataset.editId, ta.value.trim());
+      }
+      if (e.key === 'Escape') { editingId = null; renderSidebar(); }
+      return;
+    }
     const inp = e.target.closest('[data-reply-id]');
     if (inp && e.key === 'Enter' && inp.value.trim()) {
       e.stopPropagation();
@@ -376,6 +523,37 @@ window.__colladocLoaded = true;
       a.replies.push({ author, text, ts: new Date().toISOString() });
       persist().then(() => { applyHighlights(); renderSidebar(); });
     }
+  }
+  function deleteComment(id) {
+    const a = annotations.find(x => x.id === id);
+    if (!a || a.author !== author) return;
+    if (!confirm('Delete this comment?')) return;
+    annotations = annotations.filter(x => x.id !== id);
+    persist().then(() => { applyHighlights(); renderSidebar(); });
+  }
+  function editComment(id, newText) {
+    const a = annotations.find(x => x.id === id);
+    if (!a || a.author !== author) return;
+    a.comment  = newText;
+    a.editedAt = new Date().toISOString();
+    editingId  = null;
+    persist().then(() => { applyHighlights(); renderSidebar(); });
+  }
+
+  // ── Clean resolved ────────────────────────────────────────────────────────────
+  function cleanResolved() {
+    const count = annotations.filter(a => a.resolved).length;
+    if (!count) return;
+    if (!confirm(`Remove ${count} resolved thread${count === 1 ? '' : 's'} permanently?`)) return;
+    annotations = annotations.filter(a => !a.resolved);
+    persist().then(() => { applyHighlights(); renderSidebar(); });
+  }
+  function updateCleanBtn() {
+    const btn = document.getElementById('cd-clean-btn');
+    if (!btn) return;
+    const count = annotations.filter(a => a.resolved).length;
+    btn.style.display = count ? '' : 'none';
+    btn.textContent   = count === 1 ? 'Clean 1 resolved' : `Clean ${count} resolved`;
   }
 
   function focusPair(id) {
@@ -498,15 +676,18 @@ window.__colladocLoaded = true;
       <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:#94a3b8;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">
         <span style="color:#475569;font-weight:500">${document.title}</span>
         <span id="cd-save-ind" style="font-size:11px"></span>
+        <span id="cd-sync-ind" style="display:none;font-size:11px;padding:1px 6px;border-radius:4px;background:#fef3c7;font-weight:500"></span>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
         <span id="cd-open-count" style="font-size:12px;color:#94a3b8"></span>
+        <button id="cd-clean-btn" style="display:none;font-size:12px;padding:5px 10px;border:1px solid #e2e8f0;border-radius:6px;background:#fff;cursor:pointer;color:#64748b;white-space:nowrap"></button>
         <button id="cd-save-btn" style="display:none;font-size:12px;padding:5px 10px;border:1px solid #fbbf24;border-radius:6px;background:#fffbeb;cursor:pointer;color:#92400e;white-space:nowrap" title="Server not running — download updated file and save back to Drive folder">Save file</button>
         <button id="cd-sb-btn" style="font-size:12px;padding:5px 10px;border:1px solid #e2e8f0;border-radius:6px;background:#fff;cursor:pointer;color:#475569;white-space:nowrap">Hide sidebar</button>
       </div>`;
     document.body.appendChild(bar);
     document.getElementById('cd-sb-btn').addEventListener('click', toggleSidebar);
     document.getElementById('cd-save-btn').addEventListener('click', saveFile);
+    document.getElementById('cd-clean-btn').addEventListener('click', cleanResolved);
   }
 
   function injectSidebar() {
@@ -518,7 +699,10 @@ window.__colladocLoaded = true;
         <p style="margin:0;font-size:13px;font-weight:600;color:#1e293b">Review threads</p>
         <p style="margin:2px 0 0;font-size:11px;color:#94a3b8">Select text to comment</p>
       </div>
-      <div id="cd-threads" style="flex:1;overflow-y:auto;padding:8px"></div>`;
+      <div id="cd-threads" style="flex:1;overflow-y:auto;padding:8px"></div>
+      <div style="padding:6px 12px;border-top:1px solid #f1f5f9;flex-shrink:0">
+        <p id="cd-md-source" style="margin:0;font-size:10px;color:#94a3b8;text-align:center"></p>
+      </div>`;
     document.body.appendChild(sb);
   }
 
