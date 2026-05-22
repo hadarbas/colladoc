@@ -27,6 +27,7 @@ window.__colladocLoaded = true;
   let lostAnchors    = new Set();  // ids of annotations whose anchor text wasn't found in document
   let editingId      = null;       // id of annotation currently being inline-edited
   let lastSynced     = null;       // ISO timestamp set by agent when HTML was last regenerated from MD
+  let deletedIds     = new Set();  // ids explicitly deleted by this session — survive server merge
 
   // ── Boot ──────────────────────────────────────────────────────────────────────
   function init() {
@@ -105,7 +106,8 @@ window.__colladocLoaded = true;
         });
         if (res.ok) {
           const data = await res.json();
-          annotations = data.merged;
+          // Filter out anything we explicitly deleted in this session
+          annotations = data.merged.filter(a => !deletedIds.has(a.id));
           if (Array.isArray(data.approvals)) approvals = data.approvals;
           const full = payload();
           if (el) el.textContent = '\n' + JSON.stringify(full, null, 2) + '\n';
@@ -374,7 +376,7 @@ window.__colladocLoaded = true;
     const borderCol = isLost ? '#fcd34d' : (a.resolved ? '#f1f5f9' : '#e2e8f0');
     const bgCol     = isLost ? '#fffbeb' : '#fff';
     c.style.cssText = `background:${bgCol};border:1px solid ${borderCol};border-radius:10px;padding:10px 12px;cursor:pointer;margin-bottom:6px`;
-    c.addEventListener('click', () => scrollToMark(a.id));
+    c.addEventListener('click', e => { if (!e.target.closest('[data-action]') && !e.target.closest('[data-reply-id]') && !e.target.closest('[data-edit-id]')) scrollToMark(a.id); });
 
     const col  = aColor(a.author);
     const date = new Date(a.ts).toLocaleDateString('en-US', { month:'short', day:'numeric' });
@@ -442,11 +444,11 @@ window.__colladocLoaded = true;
       ta.dataset.editId = a.id;
       ta.value = a.comment;
       ta.style.cssText = 'width:100%;box-sizing:border-box;border:1px solid #2563eb;border-radius:6px;padding:6px 8px;font-size:12px;line-height:1.5;resize:none;outline:none;font-family:inherit;min-height:60px';
-      ta.addEventListener('click', e => e.stopPropagation());
+      // card click is suppressed for interactive elements via the card listener guard above
 
       const btnsDiv = document.createElement('div');
       btnsDiv.style.cssText = 'display:flex;gap:4px;margin-top:6px;justify-content:flex-end';
-      btnsDiv.addEventListener('click', e => e.stopPropagation());
+      // Do NOT stopPropagation here — the document-level handler reads data-action
       btnsDiv.innerHTML = `
         <button data-action="edit-cancel" data-id="${a.id}" style="font-size:11px;padding:3px 8px;background:none;border:1px solid #e2e8f0;border-radius:5px;cursor:pointer;color:#94a3b8">Cancel</button>
         <button data-action="edit-save"   data-id="${a.id}" style="font-size:11px;padding:3px 8px;background:#2563eb;color:#fff;border:none;border-radius:5px;cursor:pointer">Save</button>`;
@@ -528,6 +530,7 @@ window.__colladocLoaded = true;
     const a = annotations.find(x => x.id === id);
     if (!a || a.author !== author) return;
     if (!confirm('Delete this comment?')) return;
+    deletedIds.add(id);
     annotations = annotations.filter(x => x.id !== id);
     persist().then(() => { applyHighlights(); renderSidebar(); });
   }
