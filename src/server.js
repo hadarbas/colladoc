@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join, extname, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -91,6 +91,38 @@ export function startServer({ port = 3000, serveDir } = {}) {
         json(res, 200, { merged, approvals });
       }).catch(err => json(res, 500, { error: err.message }));
       return;
+    }
+
+    // ── API: sync status — compare MD mtime vs lastSynced timestamp ──
+    if (req.method === 'GET' && url.pathname === '/colladoc/sync-status') {
+      const fileParam = url.searchParams.get('file');
+      const lastSynced = url.searchParams.get('lastSynced') || null;
+      if (!fileParam) return json(res, 400, { error: 'file param required' });
+
+      const decodedFile = decodeURIComponent(fileParam);
+      const htmlPath = decodedFile.startsWith('/') && !decodedFile.startsWith(resolve(serveDir))
+        ? join(serveDir, decodedFile)
+        : decodedFile;
+
+      if (!withinServeDir(serveDir, htmlPath)) {
+        return json(res, 403, { error: 'File outside serve directory' });
+      }
+
+      const mdPath = htmlPath.replace(/\.html$/, '.md');
+      const mdExists = existsSync(mdPath);
+
+      if (!mdExists) {
+        return json(res, 200, { mdExists: false, synced: false });
+      }
+
+      if (!lastSynced) {
+        return json(res, 200, { mdExists: true, synced: true });
+      }
+
+      const mdMtime = statSync(mdPath).mtimeMs;
+      const syncedMs = new Date(lastSynced).getTime();
+      const synced = mdMtime <= syncedMs;
+      return json(res, 200, { mdExists: true, synced, mdMtime, syncedMs });
     }
 
     // ── API: list html files in serve dir ─────────────────────────

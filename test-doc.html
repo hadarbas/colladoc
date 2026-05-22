@@ -1,3 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="colladoc" content="v1">
+  <title>CollaDoc UX Review</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 720px; margin: 0 auto; padding: 40px 32px; line-height: 1.7; color: #1e293b; }
+    h1 { font-size: 1.75rem; font-weight: 700; margin-bottom: 4px; }
+    h2 { font-size: 1.1rem; font-weight: 600; margin-top: 2rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; }
+    p { margin: 0.75rem 0; color: #334155; }
+    strong { color: #1e293b; }
+  </style>
+</head>
+<body>
+  <h1>CollaDoc UX Review</h1>
+  <p>A short test document for reviewing the new CollaDoc UX improvements.</p>
+
+  <h2>Background</h2>
+  <p>CollaDoc lets teams annotate HTML specs without leaving the browser. Comments are stored as JSON inside the file itself, so the agent can read and address them directly.</p>
+
+  <h2>What changed</h2>
+  <p><strong>Ghost quotes</strong> — when the agent rewrites a section and an anchor text disappears, the comment no longer silently vanishes. It shows as an amber card with the original context: prefix, anchor, and suffix. You can still resolve it.</p>
+  <p><strong>Edit and delete</strong> — you can now fix a typo in your own comment using the pencil icon, or retract it entirely with the X button. Both require confirmation. Edited comments show an "(edited)" label.</p>
+  <p><strong>Clean resolved</strong> — the topbar now shows a "Clean N resolved" button when resolved threads exist. One click (plus confirm) permanently removes them from the JSON.</p>
+  <p><strong>Sync warning</strong> — when the server is running, the topbar shows an amber "Out of sync" badge if the .md file was modified after the HTML was last generated.</p>
+
+  <h2>How to test</h2>
+  <p>Open this file at <code>http://localhost:3000/test-doc.html</code> and enter <strong>hadar</strong> at the name prompt. You should see three pre-seeded threads in the sidebar.</p>
+
+<script type="application/json" id="colladoc-data">
+[
+  {
+    "id": "t_seed_ghost",
+    "anchor": "this text was deleted in a rewrite",
+    "prefix": "",
+    "suffix": "",
+    "comment": "G1 test: this anchor no longer exists in the document. Card should render as an amber ghost quote showing the original context.",
+    "author": "alice",
+    "ts": "2026-05-21T10:00:00.000Z",
+    "resolved": false,
+    "replies": [
+      {
+        "author": "hadar",
+        "text": "i guess its ok",
+        "ts": "2026-05-22T20:24:25.914Z"
+      }
+    ]
+  },
+  {
+    "id": "t_seed_edit",
+    "anchor": "Edit and delete",
+    "prefix": "",
+    "suffix": " — you can now",
+    "comment": "G2 test: this comment is authored by hadar — you should see pencil and X icons. Try editing it (fix a typo) or deleting it.dsf sfds f",
+    "author": "hadar",
+    "ts": "2026-05-21T11:00:00.000Z",
+    "resolved": false,
+    "replies": [],
+    "editedAt": "2026-05-22T21:39:39.397Z"
+  },
+  {
+    "id": "t_seed_resolved",
+    "anchor": "Clean resolved",
+    "prefix": "",
+    "suffix": " — the topbar now",
+    "comment": "G3 test: this thread is already resolved. The topbar should show 'Clean 1 resolved'. Click it to permanently remove this card.",
+    "author": "alice",
+    "ts": "2026-05-21T12:00:00.000Z",
+    "resolved": true,
+    "replies": []
+  },
+  {
+    "id": "t_1779481476857",
+    "anchor": "Sync warning — when the server is running, the topbar shows an amber \"Out of sync\" badge if the .md file was modified after the HTML was last generated.\n\n  ",
+    "prefix": "em from the JSON.\n  ",
+    "suffix": "How to test✓ Approve",
+    "comment": "tell me whats wrongf/ ad",
+    "author": "hadar",
+    "ts": "2026-05-22T20:24:36.858Z",
+    "resolved": true,
+    "replies": [],
+    "editedAt": "2026-05-22T21:37:23.948Z"
+  }
+]
+</script>
+<script>
 /* CollaDoc v1 — embedded annotation layer
  * Drop this script into any HTML file. Injects a fixed topbar + sidebar overlay.
  * Does NOT wrap or move body content — avoids double-init from script tag relocation.
@@ -774,3 +861,7 @@ window.__colladocLoaded = true;
     init();
   }
 })();
+
+</script>
+</body>
+</html>
