@@ -123,33 +123,39 @@ The agent filters for `"resolved": false`, reads the anchor text to find the loc
 
 ### Requirements
 
-- Node.js 18+ (for the optional local server)
+- Node.js 18+ (for the local server)
 - Chrome or Edge (for the annotation UI — uses `position:fixed` overlay, not an extension)
-- Google Drive desktop app (for syncing between machines — no cloud service needed)
+- Google Drive desktop app *(optional, for sharing annotated HTML files between teammates — the code itself is shared via git)*
 
 ### Setup (each machine)
 
-**1. Clone the repo and sync to Drive**
+**1. Clone the repo**
 
-The repo should live inside your Google Drive folder so both machines see the same files:
+Clone wherever you keep code:
 
 ```bash
-cd ~/Library/CloudStorage/GoogleDrive-you@example.com/YourFolder
-git clone https://github.com/your-org/colladoc
-cd colladoc
+git clone https://github.com/hadarbas/colladoc ~/Code/colladoc
+cd ~/Code/colladoc
 ```
 
-Or if it is already on Drive (synced from another machine), just `cd` to it.
+Annotated HTML files (the *content* you review) can live anywhere on your machine — typically in Google Drive so teammates see the same files. The repo (the *code*) lives in a normal git checkout.
 
 **2. Install the server as a background service**
 
+From inside the repo:
+
 ```bash
-bash install.sh /path/to/your/drive/folder 3000
+bash install.sh ~ 3000
 ```
 
-Replace `/path/to/your/drive/folder` with the root folder you want to serve. All HTML files in that folder (and subdirectories, via the static server) become accessible at `http://localhost:3000`.
+- First arg: the root folder you want to serve. `~` (your home folder) means every annotated HTML on your machine is reachable at `http://localhost:3000/<path>`. Use a narrower folder if you want to scope access. Default: `$HOME`.
+- Second arg: port. Default: `3000`.
+
+`install.sh` resolves `colladoc-server.js` relative to its own location, so the LaunchAgent is automatically pinned to wherever you cloned the repo.
 
 The script creates a macOS LaunchAgent that starts the server automatically on login. Logs go to `~/Library/Logs/colladoc/`.
+
+To upgrade: `git pull` in the repo. Reload any open HTML in Chrome — the server injects the latest `colladoc.js` into the response, so old annotated files pick up new behavior without re-pasting anything (see [Server-side script injection](#server-side-script-injection) below).
 
 To uninstall:
 ```bash
@@ -183,6 +189,8 @@ find $HOME -name colladoc.js -not -path "*/node_modules/*" 2>/dev/null | head -1
 ```
 Read that file and paste its full contents inside the `<script>` tag.
 
+The first line of `colladoc.js` is the banner comment `/* CollaDoc v1 …`. Keep it intact — the local server uses it as a marker to swap the inlined script for the latest version on every page load.
+
 Rules:
 - Never pre-populate `colladoc-data` — always start empty `[]`
 - Place `colladoc-data` BEFORE the script tag
@@ -205,6 +213,16 @@ Or ask Claude Code to do it for you:
 > "Add the CollaDoc rule to my global CLAUDE.md. The rule is in the README at [path to this repo]/README.md under 'Set up Claude Code'."
 
 ---
+
+## Server-side script injection
+
+When the server returns an `.html` file, it walks the page's `<script>` blocks, finds the one whose body carries the CollaDoc banner comment (`/* CollaDoc v1`), and replaces the body with the current `colladoc.js` from the repo.
+
+What this gets you:
+- **One source of truth.** Every annotated HTML on your machine runs the same `colladoc.js` — the one in your git checkout.
+- **No re-inlining after upgrades.** Edit `colladoc.js`, reload any HTML, the new version is live.
+- **Files on disk stay self-contained.** When opened directly via `file://` (no server), the inlined version still works — just frozen at whatever was pasted in.
+- **Other inline scripts are untouched.** Detection uses the banner comment, not script position, so analytics/MathJax/whatever you have in the same page is left alone.
 
 ## How the server handles concurrent saves
 
@@ -262,10 +280,12 @@ colladoc-server.js
   └── src/server.js
         ├── POST /colladoc/patch       → merge by id → write to disk
         ├── GET  /colladoc/files       → list .html files in serve dir
-        └── GET  /colladoc/sync-status → compare .md mtime vs lastSynced timestamp
+        ├── GET  /colladoc/sync-status → compare .md mtime vs lastSynced timestamp
+        └── GET  /any.html             → static + inject latest colladoc.js
 
-src/merge.js      annotation merge logic
-src/patch-html.js extract / replace colladoc-data block
+src/merge.js         annotation merge logic
+src/patch-html.js    extract / replace colladoc-data block
+src/inject-script.js swap inlined colladoc.js for current version on every GET
 ```
 
 ---
@@ -277,7 +297,7 @@ npm test          # run all tests (Node built-in test runner, no deps)
 node colladoc-server.js ./path/to/serve 3000
 ```
 
-Tests cover merge logic, HTML patching, server endpoints, and new features (39 tests, no external dependencies).
+Tests cover merge logic, HTML patching, server endpoints, and UX features (46 tests, no external dependencies).
 
 ---
 
